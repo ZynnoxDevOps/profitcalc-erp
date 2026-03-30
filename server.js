@@ -878,7 +878,10 @@ app.get('/api/analysis/profit', authenticateToken, (req, res) => {
       const pSales = sales.filter(s => s.product_id === p.id);
       const pCampaigns = campaigns.filter(c => c.product_id === p.id);
       const pPrices = db.prepare('SELECT * FROM product_prices WHERE product_id = ?').all(p.id);
-      const basePrice = pPrices.find(pr => pr.type === 'marketplace')?.value || pPrices[0]?.value || 0;
+      const bestPriceEntry = pPrices.find(pr => pr.type === 'marketplace') || pPrices[0];
+      const basePrice = bestPriceEntry?.value || 0;
+      // Custo REAL = base_cost + impostos + taxas (salvo pela Calculadora em product_prices.cost)
+      const realCost = (bestPriceEntry && bestPriceEntry.cost > 0) ? bestPriceEntry.cost : p.base_cost;
 
       let totalRevenue = 0;
       let totalUnits = 0;
@@ -900,10 +903,9 @@ app.get('/api/analysis/profit', authenticateToken, (req, res) => {
         totalUnits += s.quantity;
       });
 
-      // Totals for the product across time
-      const totalCost = p.base_cost * totalUnits;
+      // Totais usando custo REAL (com todas as taxas e impostos incluídos)
+      const totalCost = realCost * totalUnits;
       const netProfit = totalRevenue - totalCost;
-      const avgMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
       // "Currently" active campaign for suggestion logic
       const currentCampaign = pCampaigns.find(c => today >= c.start_date && today <= c.end_date);
@@ -912,13 +914,12 @@ app.get('/api/analysis/profit', authenticateToken, (req, res) => {
         if (currentCampaign.discount_percent) currentEffectivePrice *= (1 - currentCampaign.discount_percent / 100);
         else if (currentCampaign.discount_fixed) currentEffectivePrice -= currentCampaign.discount_fixed;
       }
-      const currentMargin = currentEffectivePrice > 0 ? ((currentEffectivePrice - p.base_cost) / currentEffectivePrice) * 100 : 0;
-
       globalRevenue += totalRevenue;
       globalCost += totalCost;
       globalUnits += totalUnits;
 
-      const currentProfitReais = currentEffectivePrice - p.base_cost;
+      // Lucro líquido = preço de venda - custo real (com TODAS as taxas/impostos)
+      const currentProfitReais = currentEffectivePrice - realCost;
       const currentProfitPercent = currentEffectivePrice > 0 ? (currentProfitReais / currentEffectivePrice) * 100 : 0;
 
       return {
@@ -926,6 +927,7 @@ app.get('/api/analysis/profit', authenticateToken, (req, res) => {
         name: p.name,
         image_data: p.image_data,
         base_cost: p.base_cost,
+        real_cost: realCost,
         prices: pPrices,
         current_effective_price: currentEffectivePrice,
         total_sold: totalUnits,

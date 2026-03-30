@@ -1769,9 +1769,10 @@ async function loadProfitAnalysis() {
                         <span style="font-weight:600;">${p.name}</span>
                         ${p.is_campaign ? '<span class="badge" style="background:#f472b6; color:white; border:none; font-size:0.6rem;">CAMPANHA</span>' : ''}
                     </div>
-                    <div style="font-size:0.75rem; color:var(--text-muted);">
-                        Preço Atual: R$ ${p.current_effective_price.toFixed(2)}
-                        ${p.is_campaign ? ` <small>(Original: R$ ${p.sale_price.toFixed(2)})</small>` : ''}
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                        Preço: R$ ${p.current_effective_price.toFixed(2)}
+                        &nbsp;|&nbsp;
+                        <span style="color: rgba(239,68,68,0.8);">Custo Real: R$ ${(p.real_cost || p.base_cost).toFixed(2)}</span>
                     </div>
                 </td>
                 <td>
@@ -1780,8 +1781,8 @@ async function loadProfitAnalysis() {
                     </span>
                 </td>
                 <td style="font-weight:600;">${p.total_sold}</td>
-                <td style="color:var(--success); font-weight:600;">R$ ${p.profitReais.toFixed(2)}</td>
-                <td style="font-weight:700; color: ${p.profitPercent < 20 ? 'var(--danger)' : 'var(--success)'}">${p.profitPercent.toFixed(1)}%</td>
+                <td style="color: ${p.profitReais >= 0 ? 'var(--success)' : 'var(--danger)'}; font-weight:600;">R$ ${p.profitReais.toFixed(2)}</td>
+                <td style="font-weight:700; color: ${p.profitPercent < 15 ? 'var(--danger)' : p.profitPercent < 25 ? '#f59e0b' : 'var(--success)'}">${p.profitPercent.toFixed(1)}%</td>
                 <td>
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="color: ${p.suggestionColor}; font-weight:700; font-size: 0.85rem;">${p.suggestion}</span>
