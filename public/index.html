@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProfitCalc - Sistema de Lucro Profissional</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- JsBarcode for Barcode Generation -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <!-- HTML5 QR Code for Camera Scanning -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- View: Login -->
+        <section id="login-view" class="view active">
+            <div class="glass-card login-card">
+                <div class="logo">
+                    <div class="logo-icon">💰</div>
+                    <h1>Profit<span>Calc</span></h1>
+                    <p>Entre para gerenciar seus lucros</p>
+                </div>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label for="username">Usuário</label>
+                        <input type="text" id="username" placeholder="Loja" required autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Senha</label>
+                        <input type="password" id="password" placeholder="••••••••" required
+                            autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn-primary">Entrar</button>
+                    <p id="login-error" class="error-msg"></p>
+                </form>
+            </div>
+        </section>
+
+        <!-- View: Dashboard -->
+        <section id="dashboard-view" class="view">
+            <div id="sidebar-overlay"></div>
+            <aside id="sidebar" class="sidebar">
+                <div class="sidebar-header">
+                    <div class="logo-small">
+                        <span class="logo-icon">💰</span> Profit<span>Calc</span>
+                    </div>
+                </div>
+                <nav class="main-nav">
+                    <div class="nav-group">
+                        <div class="nav-group-title">Área Central</div>
+                        <button id="nav-stock" class="nav-link"><span class="nav-icon">📉</span> Estoque</button>
+                        <button id="nav-calc" class="nav-link active"><span class="nav-icon">📊</span> Calculadora</button>
+                        <button id="nav-prices" class="nav-link"><span class="nav-icon">💲</span> Gestão de Preços</button>
+                        <button id="nav-catalog" class="nav-link"><span class="nav-icon">📦</span> Catálogo Geral</button>
+                        <button id="nav-analysis" class="nav-link" style="color:#f472b6;"><span class="nav-icon">📈</span>
+                            Análise Estratégica</button>
+                    </div>
+
+                    <div class="nav-group">
+                        <div class="nav-group-title">Área Marketplace</div>
+                        <button id="nav-marketplaces" class="nav-link" style="color:#ec4899;"><span
+                                class="nav-icon">🌐</span> Marketplaces</button>
+                        <button id="nav-campaigns" class="nav-link"><span class="nav-icon">🎯</span> Campanhas</button>
+                        <button id="nav-sales" class="nav-link" style="color:#10b981;"><span class="nav-icon">💰</span>
+                            Vendas MP</button>
+                        <button id="nav-pos" class="nav-link" style="color:#3b82f6;"><span class="nav-icon">🏧</span>
+                            Caixa / PDV</button>
+                        <button id="nav-production" class="nav-link" style="color:#8b5cf6;"><span
+                                class="nav-icon">🏗️</span> Produção</button>
+                        <button id="nav-labels" class="nav-link" style="color:#f59e0b;"><span class="nav-icon">🏷️</span>
+                            Etiquetas</button>
+                    </div>
+
+                    <div class="nav-group">
+                        <div class="nav-group-title">Área Atacado</div>
+                        <button id="nav-wholesale-cart" class="nav-link" style="color:#fbbf24;"><span
+                                class="nav-icon">🛒</span> Venda Atacado</button>
+                        <button id="nav-customers" class="nav-link"><span class="nav-icon">👥</span> Consumidor Final</button>
+                        <button id="nav-wholesale-orders" class="nav-link"><span class="nav-icon">📑</span> Vendas
+                            Atacado</button>
+                    </div>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <div class="user-info-sidebar">
+                        <div class="user-avatar">👤</div>
+                        <div class="user-details">
+                            <span id="user-name-display" class="user-name">Carregando...</span>
+                        </div>
+                    </div>
+                    <button id="logout-btn" class="btn-logout">
+                        <span class="nav-icon">🚪</span> Sair do Sistema
+                    </button>
+                </div>
+            </aside>
+
+            <button id="mobile-sidebar-toggle" class="mobile-toggle">☰</button>
+
+            <main id="main-content" class="dashboard-content">
+                <!-- Calculator Sub-View -->
+                <div id="calc-view" class="sub-view active">
+                    <div class="grid-container">
+                        <section class="calc-section">
+                            <div class="glass-card">
+                                <h2>Calculadora de Lucro</h2>
+                                <form id="calc-form">
+                                    <div class="input-group">
+                                        <label for="p-calc-catalog-id">Vincular Produto para Gestão de Preços</label>
+                                        <select id="p-calc-catalog-id">
+                                            <option value="">-- Selecione para salvar na Gestão de Preços --</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="p-type">Tipo de Venda</label>
+                                            <select id="p-type" name="p-type">
+                                                <option value="marketplace">Marketplace</option>
+                                                <option value="wholesale">Atacado</option>
+                                            </select>
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="p-calc-label">Canal / Marketplace para Salvar</label>
+                                            <select id="p-calc-label" name="p-label" style="width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 8px; background: rgba(0,0,0,0.4); color: white; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+                                                <option value="">-- Selecionar Loja --</option>
+                                                <option value="Atacado">Atacado</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="p-cost">Custo do Produto (R$)</label>
+                                            <input type="number" id="p-cost" name="p-cost" step="0.01"
+                                                placeholder="0.00" required>
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="p-price">Preço de Venda (R$)</label>
+                                            <input type="number" id="p-price" name="p-price" step="0.01"
+                                                placeholder="0.00" required>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="p-tax-p">Imposto (%)</label>
+                                            <input type="number" id="p-tax-p" name="p-tax-p" step="0.1" value="0">
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="p-tax-p-fixed">Taxa (%)</label>
+                                            <input type="number" id="p-tax-p-fixed" name="p-tax-p-fixed" step="0.1"
+                                                value="0">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="p-tax-f">Taxa Fixa (R$)</label>
+                                            <input type="number" id="p-tax-f" name="p-tax-f" step="0.01" value="0">
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="p-costs">Custos Adicionais (R$)</label>
+                                            <input type="number" id="p-costs" name="p-costs" step="0.01" value="0">
+                                        </div>
+                                    </div>
+                                    <div class="result-preview" id="result-preview">
+                                        <div class="res-item">
+                                            <span>Custo Total:</span>
+                                            <strong id="res-cost">R$ 0,00</strong>
+                                        </div>
+                                        <div class="res-item">
+                                            <span>Lucro Líquido:</span>
+                                            <strong id="res-profit" class="profit-positive">R$ 0,00</strong>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn-primary">Salvar Cálculo</button>
+                                </form>
+                            </div>
+                        </section>
+
+                        <section class="list-section">
+                            <div class="glass-card table-card">
+                                <div class="card-header">
+                                    <h2>Produtos Salvos</h2>
+                                </div>
+                                <div class="table-wrapper">
+                                    <table id="products-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Nome</th>
+                                                <th>Venda</th>
+                                                <th>Custo</th>
+                                                <th>Lucro</th>
+                                                <th>Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="products-body">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Prices Sub-View (Gestão de Preços) -->
+                <div id="prices-view" class="sub-view">
+                    <div class="catalog-header" style="margin-bottom: 2rem;">
+                        <div>
+                            <h2>💲 Gestão de Preços</h2>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Gerencie os preços parametrizados via Calculadora.</p>
+                        </div>
+                    </div>
+                    <div class="glass-card table-card">
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Canal / Empresa</th>
+                                        <th>Custo Fixo</th>
+                                        <th>Preço de Venda</th>
+                                        <th>Lucro Líquido</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prices-table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Catalog Sub-View -->
+                <div id="catalog-view" class="sub-view">
+                    <div class="catalog-header">
+                        <h2>Catálogo de Produtos</h2>
+                        <button id="btn-add-catalog" class="btn-primary" style="width:auto; padding: 10px 20px;">+ Novo
+                            Produto</button>
+                    </div>
+                    <div id="catalog-grid" class="catalog-grid"></div>
+                </div>
+
+                <!-- Stock Sub-View -->
+                <div id="stock-view" class="sub-view">
+                    <div class="catalog-header">
+                        <h2>Gestão de Estoque</h2>
+                        <span style="color: var(--text-muted); font-size: 0.9rem;">Mantenha o inventário
+                            atualizado.</span>
+                    </div>
+                    <div id="stock-grid" class="catalog-grid"></div>
+                </div>
+
+                <!-- Campaigns Sub-View -->
+                <div id="campaigns-view" class="sub-view">
+                    <div class="catalog-header">
+                        <h2>Campanhas Promocionais</h2>
+                        <button id="btn-add-campaign" class="btn-primary" style="width:auto; padding: 10px 20px;">+ Nova
+                            Campanha</button>
+                    </div>
+                    <div id="campaigns-grid" class="catalog-grid"
+                        style="grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));"></div>
+                </div>
+
+                <!-- Sales Sub-View -->
+                <div id="sales-view" class="sub-view">
+                    <div class="catalog-header" style="margin-bottom: 1rem;">
+                        <h2>Histórico de Vendas</h2>
+                    </div>
+                    <!-- Acordeões de Data Renderizados via JS -->
+                    <div id="sales-grid" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+                </div>
+
+                <!-- Marketplaces Sub-View -->
+                <div id="marketplaces-view" class="sub-view">
+                    <div class="catalog-header">
+                        <h2>Canais de Venda (Marketplaces)</h2>
+                        <span style="color: var(--text-muted); font-size: 0.9rem;">Gerencie onde seus produtos são
+                            vendidos.</span>
+                    </div>
+
+                    <div class="glass-card"
+                        style="margin-bottom: 2rem; padding: 2rem; border-color: rgba(236, 72, 153, 0.3);">
+                        <h3 style="color: #ec4899; margin-bottom: 1.5rem;">🔗 Cadastrar Novo Canal</h3>
+                        <form id="marketplace-form"
+                            style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                            <div class="form-group" style="flex-grow: 1;">
+                                <label>Nome da Loja / Marketplace</label>
+                                <input type="text" id="mkt-name" placeholder="Ex: Shopee, Mercado Livre, Loja Física..."
+                                    required style="padding: 12px;">
+                            </div>
+                            <button type="submit" class="btn-primary"
+                                style="margin-bottom: 24px; padding: 12px 30px; background: #ec4899;">Adicionar
+                                Canal</button>
+                        </form>
+                    </div>
+
+                    <div id="marketplaces-grid" class="catalog-grid"
+                        style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+                        <!-- Marketplace Cards Rendered Here -->
+                    </div>
+                </div>
+
+                <!-- Labels Sub-View -->
+                <div id="labels-view" class="sub-view">
+                    <!-- Section: Product List (Home) -->
+                    <div id="labels-list-view">
+                        <div class="catalog-header">
+                            <div>
+                                <h2>Gestor de Etiquetas 🏷️</h2>
+                                <p style="color: var(--text-muted); font-size: 0.85rem;">Clique no produto para abrir a
+                                    página de etiquetas e barcodes.</p>
+                            </div>
+                        </div>
+                        <div id="labels-container" class="catalog-grid"
+                            style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+                            <!-- Product Cards Rendered Here -->
+                        </div>
+                    </div>
+
+                    <!-- Section: Product Details (Page) -->
+                    <div id="labels-detail-view" style="display: none;">
+                        <div class="glass-card"
+                            style="padding: 1.5rem; margin-bottom: 2rem; border-color: rgba(245, 158, 11, 0.4);">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <button class="btn-secondary" onclick="closeProductLabels()"
+                                        style="width: auto; padding: 8px 15px;">⬅️ Voltar</button>
+                                    <div>
+                                        <h2 id="detail-product-name" style="color: #f59e0b; margin-bottom: 0px;">Nome do
+                                            Produto</h2>
+                                        <p style="color: var(--text-muted); font-size: 0.85rem;">Configure e imprima
+                                            etiquetas profissionais.</p>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                                    <div class="input-group" style="margin-bottom:0; width: 100px;">
+                                        <label style="font-size: 0.75rem;">Largura (mm)</label>
+                                        <input type="number" id="label-width-mm" value="50" min="10" max="250"
+                                            oninput="updateLabelDisplayPreview()" style="padding: 8px;">
+                                    </div>
+                                    <div class="input-group" style="margin-bottom:0; width: 100px;">
+                                        <label style="font-size: 0.75rem;">Altura (mm)</label>
+                                        <input type="number" id="label-height-mm" value="25" min="10" max="250"
+                                            oninput="updateLabelDisplayPreview()" style="padding: 8px;">
+                                    </div>
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                        <button class="btn-secondary" onclick="setLabelPreset(50, 25)"
+                                            style="padding: 10px; font-size: 0.8rem; background: rgba(59, 130, 246, 0.1); border-color: #3b82f6;">🧬
+                                            50x25mm</button>
+                                        <button class="btn-secondary" onclick="setLabelPreset(60, 40)"
+                                            style="padding: 10px; font-size: 0.8rem;">📏 60x40mm</button>
+                                    </div>
+                                    <button onclick="printSelectedLabels()" class="btn-primary"
+                                        style="width: auto; padding: 12px 25px; background: #f59e0b;">🖨️ Imprimir
+                                        Selecionados</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="labels-detail-grid"
+                            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+                            <!-- Variation Labels with Barcodes Here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- POS Sub-View (Caixa) -->
+                <div id="pos-view" class="sub-view">
+                    <div class="glass-card"
+                        style="max-width: 800px; margin: 0 auto; padding: 3rem; text-align: center; border-color: rgba(59, 130, 246, 0.4);">
+                        <div style="font-size: 4rem; margin-bottom: 1rem;">⚖️</div>
+                        <h2 style="color: #3b82f6; margin-bottom: 1rem;">Ponto de Venda Automático (PDV)</h2>
+
+                        <!-- Canal Selection -->
+                        <div
+                            style="margin-bottom: 2rem; background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                            <label
+                                style="display: block; font-size: 0.8rem; color: #3b82f6; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Selecionar
+                                Loja / Canal de Venda</label>
+                            <select id="pos-marketplace-select"
+                                style="width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 8px; background: rgba(0,0,0,0.4); color: white; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+                                <option value="">-- Escolha o Marketplace --</option>
+                            </select>
+                            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">A venda será
+                                vinculada ao canal selecionado e o estoque baixado do <strong>Estoque Central</strong>.
+                            </p>
+                        </div>
+
+                        <p style="color: var(--text-muted); margin-bottom: 2.5rem;">Leia o código de barras do produto
+                            para registrar a saída imediata.</p>
+
+                        <!-- Mobile Scanner Controls -->
+                        <div class="scanner-container" style="position: relative; margin-bottom: 2rem;">
+                            <button id="btn-toggle-camera" onclick="toggleCameraScanner()" class="btn-primary"
+                                style="background: #3b82f6; width: auto; padding: 12px 30px; margin-bottom: 1rem;">📸
+                                Abrir Scanner Profissional</button>
+
+                            <div id="camera-controls"
+                                style="display: none; flex-direction: column; gap: 15px; align-items: center; margin-bottom: 1rem;">
+                                <div id="reader-wrapper"
+                                    style="position: relative; width: 100%; max-width: 500px; border-radius: 16px; overflow: hidden; border: 3px solid #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);">
+                                    <div id="reader" style="width: 100%;"></div>
+                                    <!-- Guia de mira laser -->
+                                    <div id="scanner-laser"
+                                        style="position: absolute; top: 50%; left: 5%; right: 5%; height: 2px; background: #ef4444; box-shadow: 0 0 8px #ef4444; z-index: 10; display: none; pointer-events: none; animation: laserPulse 1.5s infinite;">
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                                    <button onclick="switchCamera()" class="btn-secondary"
+                                        style="width: auto; padding: 10px 18px; font-size: 0.9rem;">🔄 Inverter</button>
+                                    <button id="btn-torch" onclick="toggleTorch()" class="btn-secondary"
+                                        style="width: auto; padding: 10px 18px; font-size: 0.9rem; display: none;">💡
+                                        Luz</button>
+                                    <button onclick="stopCameraScanner()" class="btn-text"
+                                        style="color: #ef4444; font-weight: 600;">Parar Tudo</button>
+                                </div>
+
+                                <!-- Controle de Zoom (Opcional) -->
+                                <div id="zoom-control"
+                                    style="display: none; width: 100%; max-width: 300px; margin-top: 10px;">
+                                    <label
+                                        style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Zoom</label>
+                                    <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1"
+                                        style="width: 100%; accent-color: #3b82f6;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pos-input-wrapper" style="position: relative; margin-bottom: 2.5rem;">
+                            <input type="text" id="pos-barcode-input" placeholder="Aguardando scanner..."
+                                style="width: 100%; padding: 25px; font-size: 2rem; border-radius: 12px; border: 2px solid #3b82f6; background: rgba(0,0,0,0.3); color: white; text-align: center; font-family: 'Courier New', Courier, monospace;"
+                                autocomplete="off">
+                            <div id="pos-status-light"
+                                style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 25px; height: 25px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 15px #3b82f6; transition: all 0.2s;">
+                            </div>
+                        </div>
+
+                        <div id="pos-feedback" style="min-height: 80px; margin-top: 1rem;">
+                            <!-- Feedback of last scan -->
+                        </div>
+
+                        <div style="margin-top: 3rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 2rem;">
+                            <h4
+                                style="color: var(--text-muted); margin-bottom: 1.5rem; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;">
+                                Últimas Vendas do Caixa</h4>
+                            <div id="pos-log"
+                                style="display: flex; flex-direction: column; gap: 10px; text-align: left;">
+                                <!-- History of session -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Production Sub-View (Entrada de Estoque) -->
+                <div id="production-view" class="sub-view">
+                    <div class="glass-card"
+                        style="max-width: 800px; margin: 0 auto; padding: 3rem; text-align: center; border-color: rgba(139, 92, 246, 0.4);">
+                        <div style="font-size: 4rem; margin-bottom: 1rem;">📦</div>
+                        <h2 style="color: #8b5cf6; margin-bottom: 1rem;">Entrada de Produção Rápida</h2>
+                        <p style="color: var(--text-muted); margin-bottom: 2.5rem;">Escaneie o código de barras para dar
+                            entrada imediata de +1 no estoque.</p>
+
+                        <!-- Scanner Controls (Uses the same logic as POS) -->
+                        <div class="scanner-container" style="position: relative; margin-bottom: 2rem;">
+                            <button id="btn-toggle-camera-prod" onclick="toggleCameraScanner('production')"
+                                class="btn-primary"
+                                style="background: #8b5cf6; width: auto; padding: 12px 30px; margin-bottom: 1rem;">📸
+                                Abrir Scanner de Produção</button>
+
+                            <div id="camera-controls-prod"
+                                style="display: none; flex-direction: column; gap: 15px; align-items: center; margin-bottom: 1rem;">
+                                <div id="reader-wrapper-prod"
+                                    style="position: relative; width: 100%; max-width: 500px; border-radius: 16px; overflow: hidden; border: 3px solid #8b5cf6; box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);">
+                                    <div id="reader-prod" style="width: 100%;"></div>
+                                    <div id="scanner-laser-prod"
+                                        style="position: absolute; top: 50%; left: 5%; right: 5%; height: 2px; background: #ef4444; box-shadow: 0 0 8px #ef4444; z-index: 10; display: none; pointer-events: none; animation: laserPulse 1.5s infinite;">
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                                    <button onclick="switchCamera()" class="btn-secondary"
+                                        style="width: auto; padding: 10px 18px; font-size: 0.9rem;">🔄 Inverter</button>
+                                    <button id="btn-torch-prod" onclick="toggleTorch()" class="btn-secondary"
+                                        style="width: auto; padding: 10px 18px; font-size: 0.9rem; display: none;">💡
+                                        Luz</button>
+                                    <button onclick="stopCameraScanner()" class="btn-text"
+                                        style="color: #ef4444; font-weight: 600;">Parar Tudo</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pos-input-wrapper" style="position: relative; margin-bottom: 2.5rem;">
+                            <input type="text" id="prod-barcode-input" placeholder="Aguardando scanner..."
+                                style="width: 100%; padding: 25px; font-size: 2rem; border-radius: 12px; border: 2px solid #8b5cf6; background: rgba(0,0,0,0.3); color: white; text-align: center; font-family: 'Courier New', Courier, monospace;"
+                                autocomplete="off">
+                            <div id="prod-status-light"
+                                style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 25px; height: 25px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 15px #8b5cf6; transition: all 0.2s;">
+                            </div>
+                        </div>
+
+                        <div id="prod-feedback" style="min-height: 80px; margin-top: 1rem;">
+                            <!-- Feedback of last scan -->
+                        </div>
+
+                        <div style="margin-top: 3rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 2rem;">
+                            <h4
+                                style="color: var(--text-muted); margin-bottom: 1.5rem; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;">
+                                Histórico de Produção Recente</h4>
+                            <div id="prod-log"
+                                style="display: flex; flex-direction: column; gap: 10px; text-align: left;">
+                                <!-- History of session -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analysis Sub-View -->
+                <div id="analysis-view" class="sub-view">
+                    <div class="catalog-header" style="margin-bottom: 2rem;">
+                        <div>
+                            <h2 style="margin-bottom: 5px;">📈 Análise de Lucro e Vendas</h2>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Ranking de rentabilidade e
+                                otimização por volume.</p>
+                        </div>
+                        <div id="analysis-summary" style="display: flex; gap: 20px;">
+                            <!-- Summary Cards injected here -->
+                        </div>
+                    </div>
+
+                    <div class="glass-card table-card">
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Rank</th>
+                                        <th>Produto</th>
+                                        <th>Status Saída</th>
+                                        <th>Vendidos</th>
+                                        <th>Lucro (R$)</th>
+                                        <th>Lucro (%)</th>
+                                        <th>Sugestão / Otimização</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="analysis-table-body">
+                                    <!-- Analysis data injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Marketplace Analytics -->
+                    <div style="margin-top: 3rem;">
+                        <div class="catalog-header" style="margin-bottom: 1.5rem;">
+                            <h3>📊 Desempenho por Canal de Venda</h3>
+                        </div>
+                        <div id="channel-analysis-grid" class="catalog-grid"
+                            style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+                            <!-- Channel performance cards here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Customers View -->
+                <div id="customers-view" class="sub-view">
+                    <div class="catalog-header">
+                        <div>
+                            <h2>👥 Cadastro de Consumidor Final / Cliente</h2>
+                            <p style="color: var(--text-muted);">Gerencie seus clientes de atacado e varejo.</p>
+                        </div>
+                        <button class="btn-primary" onclick="openCustomerModal()">➕ Novo Cadastro</button>
+                    </div>
+                    <div class="glass-card" style="margin-top: 2rem;">
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>WhatsApp</th>
+                                        <th>Email</th>
+                                        <th>Endereço</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customers-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wholesale POS View (Venda Atacado) -->
+                <div id="wholesale-pos-view" class="sub-view">
+                    <div class="glass-card"
+                        style="max-width: 900px; margin: 0 auto; padding: 2rem; border-color: rgba(251, 191, 36, 0.4);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+                            <h2 style="color: #fbbf24; margin: 0; font-size: 2rem;">🛒 PDV de Atacado</h2>
+                            <span style="font-size: 2.5rem;">💸</span>
+                        </div>
+
+                        <!-- Client Selection -->
+                        <div class="input-group" style="background: rgba(251, 191, 36, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.2);">
+                            <label style="display: block; font-size: 0.8rem; color: #fbbf24; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">1. Selecionar Cliente / Consumidor Final</label>
+                            <select id="wpos-customer-select" style="width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 8px; background: rgba(0,0,0,0.4); color: white; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+                                <option value="">Consumidor Final</option>
+                            </select>
+                        </div>
+
+                        <p style="color: var(--text-muted); margin-top: 2rem; margin-bottom: 1rem;">2. Bipar Código de Barras do Produto ou Digitar SKU/ID</p>
+
+                        <!-- Input Barcode -->
+                        <div class="pos-input-wrapper" style="position: relative; margin-bottom: 2rem;">
+                            <input type="text" id="wpos-barcode-input" placeholder="000000000 ou SKU..."
+                                style="width: 100%; padding: 20px; font-size: 1.5rem; border-radius: 12px; border: 2px solid #fbbf24; background: rgba(0,0,0,0.3); color: white; text-align: center; font-family: 'Courier New', Courier, monospace;"
+                                autocomplete="off">
+                            <div id="wpos-status-light"
+                                style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 25px; height: 25px; border-radius: 50%; background: #fbbf24; box-shadow: 0 0 15px #fbbf24; transition: all 0.2s;">
+                            </div>
+                        </div>
+
+                        <!-- Feedback Status -->
+                        <div id="wpos-feedback" style="min-height: 50px; margin-bottom: 1rem;"></div>
+
+                        <!-- Cart Table -->
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 1rem; border: 1px solid rgba(255,255,255,0.05); text-align: left; min-height: 200px;">
+                            <table style="width:100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 0.8rem;">
+                                        <th style="padding: 10px; text-align:left;">Produto</th>
+                                        <th style="padding: 10px; text-align:center;">Qtd</th>
+                                        <th style="padding: 10px; text-align:right;">Unid. (R$)</th>
+                                        <th style="padding: 10px; text-align:right;">Subtotal</th>
+                                        <th style="padding: 10px; text-align:center;">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wpos-cart-body">
+                                </tbody>
+                            </table>
+                            <div style="text-align: right; margin-top: 1.5rem; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 1rem; font-size: 1.5rem;">
+                                Total: <strong id="wpos-total" style="color: #10b981;">R$ 0,00</strong>
+                            </div>
+                        </div>
+
+                        <!-- Submit Buttons -->
+                        <div style="text-align: right; margin-top: 2rem;">
+                            <button id="btn-submit-wpos" class="btn-primary" style="background:#10b981; font-size: 1.2rem; padding: 15px 30px; width: 100%;">
+                                ✅ Finalizar Venda e Imprimir Cupom Não-Fiscal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wholesale Orders View -->
+                <div id="wholesale-orders-view" class="sub-view">
+                    <div class="catalog-header">
+                        <div>
+                            <h2>📑 Histórico de Vendas Atacado</h2>
+                            <p style="color: var(--text-muted);">Acompanhe todos os pedidos realizados.</p>
+                        </div>
+                    </div>
+                    <div class="glass-card" style="margin-top: 2rem;">
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Cliente</th>
+                                        <th>Total</th>
+                                        <th>Status</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wholesale-orders-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </section>
+
+        <!-- Wholesale Print Staging (Hidden) -->
+        <div id="wholesale-print-staging"></div>
+
+        <!-- Floating Cart Button -->
+        <div id="view-cart-btn" class="cart-floating-btn" onclick="toggleCartSidebar()" style="display: none;">
+            <span>🛒</span>
+            <div id="cart-count" class="cart-count-badge">0</div>
+        </div>
+
+        <!-- Wholesale Cart Sidebar -->
+        <div id="cart-sidebar" class="wholesale-cart-sidebar">
+            <div class="cart-header">
+                <h3>🛍️ Seu Pedido</h3>
+                <button class="btn-text" onclick="toggleCartSidebar()" style="font-size: 1.5rem;">&times;</button>
+            </div>
+            <div class="cart-items-list" id="cart-items-container">
+                <!-- Cart items here -->
+            </div>
+            <div class="cart-footer">
+                <div class="input-group" style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.8rem; color: var(--text-muted);">Selecionar Cliente</label>
+                    <select id="cart-customer-select" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: white; padding: 10px; border-radius: 8px;">
+                        <option value="">Cliente Ocasional</option>
+                    </select>
+                </div>
+                <div class="cart-total-row">
+                    <span>Total:</span>
+                    <span id="cart-total-value">R$ 0,00</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn-primary" style="background: #25d366; border-color: #128c7e;" onclick="finishWholesaleOrder(true)">
+                        📲 Enviar via WhatsApp
+                    </button>
+                    <button class="btn-secondary" onclick="finishWholesaleOrder(false)">
+                        ✅ Apenas Finalizar Pedido
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Customer -->
+        <div id="customer-modal" class="modal">
+            <div class="modal-content glass-card" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h3>Cadastro de Cliente</h3>
+                    <span class="close-modal" onclick="closeCustomerModal()">&times;</span>
+                </div>
+                <form id="customer-form">
+                    <div class="modal-body">
+                        <div class="input-group">
+                            <label>Nome Completo</label>
+                            <input type="text" id="cust-name" placeholder="Ex: João da Silva" required>
+                        </div>
+                        <div class="input-group">
+                            <label>WhatsApp (com DDD)</label>
+                            <input type="text" id="cust-phone" placeholder="Ex: 11999999999">
+                        </div>
+                        <div class="input-group">
+                            <label>Email</label>
+                            <input type="email" id="cust-email" placeholder="cliente@exemplo.com">
+                        </div>
+                        <div class="input-group">
+                            <label>Endereço / Observações</label>
+                            <textarea id="cust-address" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button type="button" class="btn-secondary" onclick="closeCustomerModal()">Cancelar</button>
+                        <button type="submit" class="btn-primary" style="width: auto;">Salvar Cliente</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Variation Selector Modal (for Cart) -->
+        <div id="variation-modal" class="modal">
+            <div class="modal-content glass-card" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3 id="var-modal-title">Selecionar Variações</h3>
+                    <span class="close-modal" onclick="closeVariationModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div id="var-product-info" style="margin-bottom:1.5rem; display:flex; gap:15px; align-items:center;"></div>
+                    <div id="var-list" style="display:flex; flex-direction:column; gap:10px; max-height: 400px; overflow-y: auto;"></div>
+                </div>
+                <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button class="btn-primary" style="width: auto;" onclick="closeVariationModal()">Pronto</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Catalog -->
+        <div id="catalog-modal" class="modal">
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h3>Cadastrar no Catálogo</h3>
+                    <span class="close-modal">&times;</span>
+                </div>
+                <form id="catalog-form">
+                    <div class="modal-body-scroll">
+
+                        <div class="form-section">
+                            <h4>📦 Informações Básicas</h4>
+                            <div class="input-group">
+                                <label>Foto do Produto</label>
+                                <div class="image-upload-wrapper">
+                                    <input type="file" id="cat-image" accept="image/*" hidden>
+                                    <label for="cat-image" class="image-preview" id="image-preview-box">
+                                        <span>Clique para enviar foto</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>Nome do Produto</label>
+                                <input type="text" id="cat-name" placeholder="Ex: Camiseta Algodão" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="input-group">
+                                    <label>Custo Base de Produção (R$)</label>
+                                    <input type="number" id="cat-cost" step="0.01" placeholder="0.00" required>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>Descrição</label>
+                                <textarea id="cat-desc" rows="3"
+                                    placeholder="Descrição opcional do produto..."></textarea>
+                            </div>
+                            <div class="info-note" style="background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--primary); padding: 12px; border-radius: 8px; margin-top: 10px;">
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                                    💡 <strong>Dica:</strong> Os preços de venda agora são gerenciados na <strong>Calculadora de Lucro</strong> para maior precisão nos cálculos.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="form-section" id="cat-variations-section">
+                            <h4>🎨 Variações e SKUs</h4>
+                            <p class="section-desc">Selecione tamanhos e cores para gerar SKUs automaticamente.</p>
+                            <div class="input-group">
+                                <label>Cores (separadas por vírgula)</label>
+                                <input type="text" id="cat-colors" placeholder="Ex: Preto, Branco, Azul">
+                            </div>
+                            <div class="size-selector">
+                                <label><input type="checkbox" name="size" value="P"> P</label>
+                                <label><input type="checkbox" name="size" value="M"> M</label>
+                                <label><input type="checkbox" name="size" value="G"> G</label>
+                                <label><input type="checkbox" name="size" value="GG"> GG</label>
+                                <label><input type="checkbox" name="size" value="EXG"> EXG</label>
+                                <label><input type="checkbox" name="size" value="G1"> G1</label>
+                                <label><input type="checkbox" name="size" value="G2"> G2</label>
+                                <label><input type="checkbox" name="size" value="G3"> G3</label>
+                            </div>
+                            <button type="button" id="btn-gen-variations" class="btn-secondary">⚡ Gerar Matriz de
+                                SKUs</button>
+                            <div id="variations-matrix" class="variations-matrix"></div>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn-primary">💾 Salvar no Catálogo</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal Stock Edit -->
+        <div id="stock-modal" class="modal">
+            <div class="modal-content glass-card" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3>Editar Estoque</h3>
+                    <span class="close-modal close-stock-modal">&times;</span>
+                </div>
+                <form id="stock-form">
+                    <div class="modal-body-scroll">
+                        <h4 id="stock-product-name" style="margin-bottom: 0.5rem; color: var(--primary);"></h4>
+                        <p class="section-desc">Ajuste as quantidades disponíveis de cada variação abaixo:</p>
+
+                        <div class="stock-table-wrapper" style="margin-top: 1rem;">
+                            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted);">
+                                        <th style="padding: 10px 5px;">Cor</th>
+                                        <th style="padding: 10px 5px;">Tamanho</th>
+                                        <th style="padding: 10px 5px;">SKU</th>
+                                        <th style="padding: 10px 5px; width: 100px;">Quantidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stock-modal-body">
+                                    <!-- Stock Inputs Rendered Here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn-primary">💾 Salvar Estoque</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal Campaign -->
+        <div id="campaign-modal" class="modal">
+            <div class="modal-content glass-card" style="max-width: 650px; padding: 0;">
+                <div class="modal-header"
+                    style="background: linear-gradient(to right, rgba(99, 102, 241, 0.1), transparent); border-bottom: 1px solid var(--border); padding: 1.5rem 2rem;">
+                    <h3 style="display:flex; align-items:center; gap:10px;"><span style="font-size: 1.5rem;">🎉</span>
+                        Criar Nova Campanha</h3>
+                    <span class="close-modal close-campaign-modal">&times;</span>
+                </div>
+                <form id="campaign-form">
+                    <div class="modal-body-scroll" style="padding: 2rem;">
+
+                        <!-- Section: Basic Info -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <h4
+                                style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.5rem;">
+                                1. Detalhes da Campanha</h4>
+                            <div class="form-group">
+                                <label>Nome da Campanha <span style="color:#ef4444">*</span></label>
+                                <input type="text" id="camp-name"
+                                    placeholder="Ex: Black Friday, Liquidação de Inverno..."
+                                    style="font-size: 1.1rem; padding: 12px 15px;" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Canal de Venda / Loja <span style="color:#ef4444">*</span></label>
+                                <select id="camp-marketplace-id" style="width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 8px; background: rgba(0,0,0,0.4); color: white; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;" required>
+                                    <option value="">-- Escolha o Marketplace --</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Data de Início (Opcional)</label>
+                                    <input type="date" id="camp-start" style="color: var(--text-muted);">
+                                </div>
+                                <div class="form-group">
+                                    <label>Data de Término (Opcional)</label>
+                                    <input type="date" id="camp-end" style="color: var(--text-muted);">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Discount Rules -->
+                        <div
+                            style="margin-bottom: 1.5rem; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); padding: 1.5rem; border-radius: 12px;">
+                            <h4
+                                style="color: var(--primary); font-size: 0.9rem; margin-bottom: 1rem; display:flex; align-items:center; gap:8px;">
+                                <span>💰</span> Regras de Desconto
+                            </h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Você pode usar
+                                porcentagem, valor fixo, ou ambos simultaneamente.</p>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Desconto em Porcentagem (%)</label>
+                                    <div style="position:relative;">
+                                        <input type="number" id="camp-discount-percent" placeholder="Ex: 15" min="0"
+                                            step="0.01" style="padding-left: 40px; font-weight: 600; color: #10b981;">
+                                        <span
+                                            style="position:absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-muted);">%</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Desconto em Valor Fixo (R$)</label>
+                                    <div style="position:relative;">
+                                        <input type="number" id="camp-discount-fixed" placeholder="Ex: 50.00" min="0"
+                                            step="0.01" style="padding-left: 40px; font-weight: 600; color: #10b981;">
+                                        <span
+                                            style="position:absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-muted);">R$</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Products -->
+                        <div>
+                            <h4
+                                style="color: white; font-size: 0.95rem; margin-bottom: 0.5rem; display:flex; justify-content:space-between; align-items:center;">
+                                <span>Selecione os Produtos Participantes</span>
+                                <span
+                                    style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px;">Opcional
+                                    agora</span>
+                            </h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Marque os
+                                produtos que farão parte desta promoção.</p>
+
+                            <div id="camp-products-list"
+                                style="max-height: 280px; overflow-y: auto; overflow-x: hidden; background: rgba(0,0,0,0.15); border-radius: 12px; padding: 12px; border: 1px inset rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 8px;">
+                                <!-- Checkboxes will be rendered here via JS -->
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer"
+                        style="padding: 1.5rem 2rem; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2);">
+                        <button type="submit" class="btn-primary"
+                            style="width: 100%; font-size: 1.1rem; padding: 14px;">🚀 Lançar Campanha</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        </section>
+    </div>
+    <div id="print-staging-area" style="display: none;"></div>
+    <div id="receipt-print-area" class="print-only"></div>
+
+    <script src="main.js"></script>
+</body>
+</html>

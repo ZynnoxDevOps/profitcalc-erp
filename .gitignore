@@ -1,0 +1,23 @@
+# Dependências
+node_modules/
+
+# Banco de dados local
+database.db
+
+# Certificados SSL (sensível)
+cert.pem
+key.pem
+
+# Logs
+*.log
+out.log
+out.txt
+out_ngrok.log
+
+# Variáveis de ambiente
+.env
+.env.local
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
