@@ -794,11 +794,12 @@ app.get('/api/production', authenticateToken, (req, res) => {
 });
 
 app.get('/api/sales', authenticateToken, (req, res) => {
-  const { company_id, role } = req.user;
+  const { company_id } = req.user;
   const query = `
       SELECT s.id, s.sale_date, s.quantity, s.marketplace_id,
-             v.color, v.size, v.sku, 
-             p.name, p.image_data, p.sale_price, p.base_cost,
+             s.unit_price, s.unit_cost, s.unit_profit,
+             v.color, v.size, v.sku,
+             p.name, p.image_data, p.base_cost,
              m.name as marketplace_name
       FROM sales s
       JOIN variations v ON s.variation_id = v.id
@@ -806,10 +807,9 @@ app.get('/api/sales', authenticateToken, (req, res) => {
       LEFT JOIN marketplaces m ON s.marketplace_id = m.id
       WHERE s.company_id = ?
       ORDER BY s.sale_date DESC, s.created_at DESC
-   `;
+  `;
 
   const sales = db.prepare(query).all(company_id);
-
   res.json(sales);
 });
 

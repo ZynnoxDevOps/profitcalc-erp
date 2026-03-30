@@ -1131,70 +1131,115 @@ function renderSales() {
             <div style="text-align:center; color: var(--text-muted); padding: 4rem;">
                 <div style="font-size: 3rem; margin-bottom: 1rem;">📈</div>
                 <p>Nenhuma venda registrada até o momento.</p>
-                <p style="font-size:0.85; margin-top:0.5rem;">Use o Caixa (PDV) para registrar vendas e baixar o estoque.</p>
+                <p style="font-size:0.85rem; margin-top:0.5rem;">Use o Caixa (PDV) para registrar vendas e baixar o estoque.</p>
             </div>`;
         return;
     }
 
+    // Agrupa por data
     const grouped = salesData.reduce((acc, sale) => {
-        if (!acc[sale.sale_date]) acc[sale.sale_date] = [];
-        acc[sale.sale_date].push(sale);
+        const dateKey = sale.sale_date || 'Sem data';
+        if (!acc[dateKey]) acc[dateKey] = [];
+        acc[dateKey].push(sale);
         return acc;
     }, {});
 
-    salesGrid.innerHTML = Object.keys(grouped).sort((a,b)=>new Date(b)-new Date(a)).map(dateStr => {
+    salesGrid.innerHTML = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a)).map(dateStr => {
         const daySales = grouped[dateStr];
-        const totalItemsDay = daySales.reduce((sum, s) => sum + s.quantity, 0);
+        const totalItemsDay = daySales.reduce((sum, s) => sum + (s.quantity || 0), 0);
+        const totalRevenueDay = daySales.reduce((sum, s) => sum + ((s.unit_price || 0) * (s.quantity || 0)), 0);
+        const totalProfitDay  = daySales.reduce((sum, s) => sum + ((s.unit_profit || 0) * (s.quantity || 0)), 0);
 
+        // Formata a data para exibição
+        let dateDisplay = dateStr;
+        try {
+            const [y, m, d] = dateStr.split('-');
+            if (y && m && d) dateDisplay = `${d}/${m}/${y}`;
+        } catch(e) {}
+
+        // Agrupa por produto dentro do dia
         const prodGroup = daySales.reduce((pAcc, s) => {
-             if(!pAcc[s.name]) pAcc[s.name] = [];
-             pAcc[s.name].push(s);
-             return pAcc;
+            if (!pAcc[s.name]) pAcc[s.name] = [];
+            pAcc[s.name].push(s);
+            return pAcc;
         }, {});
 
-        let itemsHtml = Object.keys(prodGroup).map(pName => {
-             const vList = prodGroup[pName].map(v => 
-                `<div style="display:flex; justify-content:space-between; margin-top: 5px; font-size: 0.8rem; border-top: 1px dotted rgba(255,255,255,0.05); padding-top: 5px; align-items:center;">
-                    <div style="display:flex; flex-direction:column;">
-                        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--primary); margin-right:6px;"></span>Cor: ${v.color} | Tam: ${v.size} | <small style="color:var(--text-muted)">(${v.sku})</small></span>
-                        <span style="font-size:0.7rem; color: #ec4899; margin-left:14px; font-weight:600;">🏪 Canal: ${v.marketplace_name || 'Venda Direta'}</span>
+        const itemsHtml = Object.keys(prodGroup).map(pName => {
+            const prodSales = prodGroup[pName];
+            const prodTotal = prodSales.reduce((sum, s) => sum + (s.quantity || 0), 0);
+
+            const vList = prodSales.map(v => {
+                const unitPrice = v.unit_price ? `R$ ${Number(v.unit_price).toFixed(2)}` : '—';
+                const unitProfit = v.unit_profit != null
+                    ? `<span style="color:${v.unit_profit >= 0 ? '#10b981' : '#ef4444'}; font-weight:600;">Lucro: R$ ${Number(v.unit_profit).toFixed(2)}</span>`
+                    : '';
+                return `
+                <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.82rem; border-top:1px dotted rgba(255,255,255,0.07); padding-top:6px; align-items:center; flex-wrap:wrap; gap:4px;">
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <span>
+                            <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--primary); margin-right:6px;"></span>
+                            ${v.color} | ${v.size} <small style="color:var(--text-muted)">(${v.sku})</small>
+                        </span>
+                        <span style="margin-left:13px; display:flex; gap:10px; flex-wrap:wrap;">
+                            <span style="color:#ec4899; font-weight:600;">🏪 ${v.marketplace_name || 'Venda Direta'}</span>
+                            <span style="color:var(--text-muted);">Preço: ${unitPrice}</span>
+                            ${unitProfit}
+                        </span>
                     </div>
-                    <strong style="color:#10b981; font-size: 0.9rem;">+${v.quantity} un</strong>
-                 </div>`
-             ).join('');
-             
-             // Usa a primeira imagem do produto
-             const thumb = prodGroup[pName][0].image_data;
-             return `
-                <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 12px; display:flex; gap: 15px; border: 1px solid rgba(255,255,255,0.02);">
-                    ${thumb ? `<img src="${thumb}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">` : `<div style="width:50px; height:50px; border-radius:6px; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-size:1.5rem;">📦</div>`}
-                    <div style="flex-grow:1;">
-                        <strong style="color:var(--primary); font-size: 1.05rem; display:block; margin-bottom: 8px;">${pName}</strong>
-                        <div>${vList}</div>
+                    <strong style="color:#10b981; font-size:0.95rem; white-space:nowrap;">+${v.quantity} un</strong>
+                </div>`;
+            }).join('');
+
+            const thumb = prodSales[0].image_data;
+            return `
+            <div style="background:rgba(0,0,0,0.2); padding:14px; border-radius:10px; margin-bottom:10px; display:flex; gap:14px; border:1px solid rgba(255,255,255,0.04);">
+                ${thumb
+                    ? `<img src="${thumb}" style="width:48px; height:48px; object-fit:cover; border-radius:8px; flex-shrink:0;">`
+                    : `<div style="width:48px; height:48px; border-radius:8px; background:rgba(255,255,255,0.07); display:flex; align-items:center; justify-content:center; font-size:1.4rem; flex-shrink:0;">📦</div>`
+                }
+                <div style="flex-grow:1; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px; margin-bottom:4px;">
+                        <strong style="color:var(--primary-light); font-size:1rem;">${pName}</strong>
+                        <span class="badge" style="background:rgba(139,92,246,0.1); color:var(--primary-light); border-color:var(--primary); white-space:nowrap;">${prodTotal} un</span>
                     </div>
+                    ${vList}
                 </div>
-             `;
+            </div>`;
         }).join('');
 
+        // Resumo financeiro do dia
+        const hasFinancial = totalRevenueDay > 0;
+        const financialSummary = hasFinancial ? `
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.07);">
+                <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:8px 14px; text-align:center; flex:1; min-width:100px;">
+                    <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Faturamento</div>
+                    <div style="font-weight:700; color:#10b981; font-size:1rem;">R$ ${totalRevenueDay.toFixed(2)}</div>
+                </div>
+                <div style="background:rgba(${totalProfitDay>=0?'16,185,129':'239,68,68'},0.1); border:1px solid rgba(${totalProfitDay>=0?'16,185,129':'239,68,68'},0.2); border-radius:8px; padding:8px 14px; text-align:center; flex:1; min-width:100px;">
+                    <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Lucro do Dia</div>
+                    <div style="font-weight:700; color:${totalProfitDay>=0?'#10b981':'#ef4444'}; font-size:1rem;">R$ ${totalProfitDay.toFixed(2)}</div>
+                </div>
+            </div>` : '';
+
         return `
-            <details class="glass-card" style="padding: 0; cursor: pointer; border: 1px solid rgba(16,185,129,0.2);">
-                <summary style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; list-style: none;">
-                    <div style="display:flex; align-items:center; gap: 15px;">
-                        <h3 style="margin: 0; display:flex; align-items:center; gap: 12px; color: white;">
-                            <span style="font-size:1.5rem;">📅</span> ${dateStr.split('-').reverse().join('/')}
-                        </h3>
-                    </div>
-                    <div style="display:flex; align-items:center; gap: 12px;">
-                        <span class="badge" style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid #10b981; font-weight:bold; font-size: 1rem; margin:0;">${totalItemsDay} itens vendidos</span>
-                    </div>
-                </summary>
-                <div style="padding: 0 1.5rem 1.5rem; border-top: 1px solid rgba(255,255,255,0.05); cursor: default;">
-                    <div style="margin-top: 1.5rem;">
-                        ${itemsHtml}
+        <details class="glass-card" style="padding:0; cursor:pointer; border:1px solid rgba(16,185,129,0.2); border-radius:16px; overflow:hidden;">
+            <summary style="padding:1.25rem 1.5rem; display:flex; justify-content:space-between; align-items:center; list-style:none; user-select:none;">
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <span style="font-size:1.6rem;">📅</span>
+                    <div>
+                        <div style="font-size:1.1rem; font-weight:700; color:white;">${dateDisplay}</div>
+                        ${hasFinancial ? `<div style="font-size:0.75rem; color:#10b981;">R$ ${totalRevenueDay.toFixed(2)} faturado</div>` : ''}
                     </div>
                 </div>
-            </details>
-        `;
+                <span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid #10b981; font-weight:700; font-size:0.95rem; white-space:nowrap;">${totalItemsDay} ${totalItemsDay === 1 ? 'item' : 'itens'}</span>
+            </summary>
+            <div style="padding:0 1.5rem 1.5rem; border-top:1px solid rgba(255,255,255,0.06);">
+                <div style="margin-top:1rem;">
+                    ${itemsHtml}
+                    ${financialSummary}
+                </div>
+            </div>
+        </details>`;
     }).join('');
 }
 
