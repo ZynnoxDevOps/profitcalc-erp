@@ -26,7 +26,20 @@ const pool = new Pool(
   } : {}
 );
 
-// BUILD: 2026-03-31-v5
+// CRÍTICO: sem este handler, erros de conexão pool matam o processo no Node 18+
+pool.on('error', (err) => {
+  console.error('⚠️ Pool error (não fatal):', err.message);
+});
+
+// Handlers globais para manter o servidor vivo
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ uncaughtException:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ unhandledRejection:', reason?.message || reason);
+});
+
+// BUILD: 2026-03-31-v6
 // =====================
 // EXPRESS MIDDLEWARE
 // =====================
