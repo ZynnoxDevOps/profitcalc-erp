@@ -445,6 +445,9 @@ app.put('/api/catalog/:id', authenticateToken, async (req, res) => {
       const existingPrices = existingPricesRes.rows;
 
       for (const ep of existingPrices) {
+        // Atacado is always manual — never auto-reprice it
+        if (ep.label === 'Atacado' || ep.type === 'wholesale') continue;
+
         const preset = getStorePresetServer(ep.label);
         const newSalePrice = calcIdealPriceServer(newCost, preset);
         if (!newSalePrice) continue;

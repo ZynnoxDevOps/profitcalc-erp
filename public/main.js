@@ -396,13 +396,17 @@ function filterStoresForCalc(productId) {
             usedLabels = prod.prices.map(pr => pr.label);
         }
     }
-    // Build options excluding already-used labels
-    const allStores = [{ name: 'Atacado' }, ...allMarketplaces];
+    // Build options excluding already-used labels (Atacado excluded from automation, always manual)
+    const allStores = [...allMarketplaces];
     const available = allStores.filter(s => !usedLabels.includes(s.name));
+    // Always keep Atacado in dropdown (manual only), just skip it from the filter logic
+    const atacadoUsed = usedLabels.includes('Atacado');
+    const atacadoOpt = atacadoUsed ? '' : '<option value="Atacado">Atacado</option>';
     pCalcLabel.innerHTML = '<option value="">-- Selecionar Loja --</option>' +
+        atacadoOpt +
         available.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
 
-    if (available.length === 0) {
+    if (available.length === 0 && atacadoUsed) {
         pCalcLabel.innerHTML = '<option value="">✅ Todas as lojas já foram cadastradas</option>';
     }
 }
@@ -513,10 +517,9 @@ function updateAutoPriceBanner(productId) {
         return;
     }
 
-    // Count how many stores still need pricing
+    // Count how many marketplaces still need pricing (Atacado excluded — always manual)
     const usedLabels = (prod.prices || []).map(pr => pr.label);
-    const allStores = [{ name: 'Atacado' }, ...allMarketplaces];
-    const pending = allStores.filter(s => !usedLabels.includes(s.name));
+    const pending = allMarketplaces.filter(s => !usedLabels.includes(s.name));
 
     if (pending.length === 0) {
         banner.style.display = 'none';
@@ -562,8 +565,8 @@ window.autoCalculateAllStores = async function() {
     }
 
     const usedLabels = (prod.prices || []).map(pr => pr.label);
-    const allStores = [{ name: 'Atacado' }, ...allMarketplaces];
-    const pending = allStores.filter(s => !usedLabels.includes(s.name));
+    // Atacado is always manual — only auto-price marketplaces
+    const pending = allMarketplaces.filter(s => !usedLabels.includes(s.name));
 
     if (pending.length === 0) {
         alert('Todas as lojas já têm preço cadastrado para este produto.'); return;
