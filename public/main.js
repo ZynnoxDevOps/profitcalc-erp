@@ -2425,13 +2425,6 @@ function renderWposCart() {
 }
 
 function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
-    let parea = document.getElementById('wholesale-print-staging');
-    if (!parea) {
-        parea = document.createElement('div');
-        parea.id = 'wholesale-print-staging';
-        document.body.appendChild(parea);
-    }
-
     let customerName = 'Consumidor Final';
     if (customerIdSelected) {
         const c = customers.find(c => c.id == parseInt(customerIdSelected));
@@ -2441,60 +2434,46 @@ function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
     const orderNo = orderData?.id || '---';
     const total = orderData?.total_amount ?? itemsUsed.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
 
-    const rows = itemsUsed.map(i => `
-        <tr>
-            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;">${i.name}<br><span style="font-size:9px;color:#555;">${i.color} | ${i.size} — SKU: ${i.sku || '-'}</span></td>
-            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;">${i.quantity}</td>
-            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;">R$ ${Number(i.unit_price).toFixed(2)}</td>
-            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;font-weight:bold;">R$ ${(Number(i.unit_price) * i.quantity).toFixed(2)}</td>
-        </tr>`).join('');
+    const rows = itemsUsed.map(i =>
+        '<tr>' +
+        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;">' + i.name + '<br><span style="font-size:9px;color:#555;">' + (i.color||'-') + ' | ' + (i.size||'-') + ' &mdash; SKU: ' + (i.sku||'-') + '</span></td>' +
+        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;">' + i.quantity + '</td>' +
+        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;">R$ ' + Number(i.unit_price).toFixed(2) + '</td>' +
+        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;font-weight:bold;">R$ ' + (Number(i.unit_price) * i.quantity).toFixed(2) + '</td>' +
+        '</tr>'
+    ).join('');
 
-    parea.innerHTML = `
-        <div style="width:100%;max-width:280px;font-family:'Courier New',monospace;font-size:10px;color:#000;padding:4mm;">
-            <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px;">
-                <strong style="font-size:13px;display:block;margin-bottom:2px;">PROFITCALC ERP</strong>
-                <span style="font-size:9px;">CUPOM NÃO FISCAL — VENDA ATACADO</span><br>
-                <span>Nº ${String(orderNo).padStart(6,'0')} — ${new Date().toLocaleString('pt-BR')}</span>
-            </div>
-            <div style="margin-bottom:8px;border-bottom:1px dashed #000;padding-bottom:6px;">
-                <strong>Cliente:</strong> ${customerName}
-            </div>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
-                <thead>
-                    <tr>
-                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:left;">Produto</th>
-                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:center;">Qtd</th>
-                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:right;">Unit.</th>
-                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:right;">Total</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-            <div style="text-align:right;border-top:2px solid #000;padding-top:5px;font-weight:bold;font-size:13px;">
-                TOTAL: R$ ${Number(total).toFixed(2)}
-            </div>
-            <div style="text-align:center;margin-top:15px;font-size:9px;border-top:1px dashed #000;padding-top:8px;">
-                Obrigado pela preferência!<br>Documento sem valor fiscal.
-            </div>
-        </div>`;
+    const win = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=1');
+    if (!win) { alert('Permita pop-ups neste navegador para imprimir o cupom.'); return; }
 
-    // Torna visível ANTES de imprimir, restaura depois
-    parea.style.display = 'block';
-    parea.style.position = 'fixed';
-    parea.style.top = '0';
-    parea.style.left = '0';
-    parea.style.zIndex = '99999';
-    parea.style.background = 'white';
+    const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Cupom Atacado</title>' +
+        '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:"Courier New",Courier,monospace;font-size:10px;color:#000;background:#fff;padding:4mm;}table{width:100%;border-collapse:collapse;}strong{font-weight:bold;}@media print{@page{size:80mm auto;margin:0;}body{padding:2mm;}button{display:none;}}</style>' +
+        '</head><body>' +
+        '<div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px;">' +
+            '<strong style="font-size:14px;display:block;margin-bottom:2px;">PROFITCALC ERP</strong>' +
+            '<span style="font-size:9px;">CUPOM NAO FISCAL &mdash; VENDA ATACADO</span><br>' +
+            '<span>N&ordm; ' + String(orderNo).padStart(6,'0') + ' &mdash; ' + new Date().toLocaleString('pt-BR') + '</span>' +
+        '</div>' +
+        '<div style="margin-bottom:8px;border-bottom:1px dashed #000;padding-bottom:6px;"><strong>Cliente:</strong> ' + customerName + '</div>' +
+        '<table style="margin-bottom:8px;">' +
+            '<thead><tr>' +
+                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:left;">Produto</th>' +
+                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:center;">Qtd</th>' +
+                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:right;">Unit.</th>' +
+                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:right;">Total</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        '<div style="text-align:right;border-top:2px solid #000;padding-top:5px;font-weight:bold;font-size:13px;">TOTAL: R$ ' + Number(total).toFixed(2) + '</div>' +
+        '<div style="text-align:center;margin-top:15px;font-size:9px;border-top:1px dashed #000;padding-top:8px;">Obrigado pela preferencia!<br>Documento sem valor fiscal.</div>' +
+        '<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};<\/script>' +
+        '</body></html>';
 
-    setTimeout(() => {
-        window.print();
-        setTimeout(() => {
-            parea.style.display = 'none';
-            parea.innerHTML = '';
-        }, 500);
-
-    }, 300);
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
 }
+
 
 // Orders Management
 window.loadWholesaleOrders = async () => {
