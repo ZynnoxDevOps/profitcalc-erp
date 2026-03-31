@@ -414,6 +414,66 @@ if (pCalcCatalogId) {
     });
 }
 
+// Preset tax configs for known marketplaces (case-insensitive substring match)
+const MARKETPLACE_PRESETS = [
+    {
+        match: 'tiktok',
+        taxP: 8,       // Imposto %
+        taxPFixed: 6,  // Taxa %
+        taxF: 4,       // Taxa Fixa R$
+        costs: 0       // Custos Adicionais R$
+    },
+    {
+        match: 'shein',
+        taxP: 8,
+        taxPFixed: 20,
+        taxF: 4,
+        costs: 0
+    },
+    {
+        match: 'shopee',
+        taxP: 8,
+        taxPFixed: 20,
+        taxF: 4,
+        costs: 2
+    }
+];
+
+function applyMarketplacePreset(storeName) {
+    if (!storeName) return;
+    const lower = storeName.toLowerCase();
+    const preset = MARKETPLACE_PRESETS.find(p => lower.includes(p.match));
+    if (!preset) return;
+
+    const taxPEl      = document.getElementById('p-tax-p');
+    const taxPFixedEl = document.getElementById('p-tax-p-fixed');
+    const taxFEl      = document.getElementById('p-tax-f');
+    const costsEl     = document.getElementById('p-costs');
+
+    if (taxPEl)      taxPEl.value      = preset.taxP;
+    if (taxPFixedEl) taxPFixedEl.value = preset.taxPFixed;
+    if (taxFEl)      taxFEl.value      = preset.taxF;
+    if (costsEl)     costsEl.value     = preset.costs;
+
+    updatePreview();
+
+    // Visual feedback — flash the fields
+    [taxPEl, taxPFixedEl, taxFEl, costsEl].forEach(el => {
+        if (!el) return;
+        el.style.transition = 'background 0.3s';
+        el.style.background = 'rgba(139, 92, 246, 0.25)';
+        setTimeout(() => { el.style.background = ''; }, 1200);
+    });
+}
+
+// When store changes in main calc → apply preset if known marketplace
+if (pCalcLabel) {
+    pCalcLabel.addEventListener('change', () => {
+        applyMarketplacePreset(pCalcLabel.value);
+    });
+}
+
+
 // =====================
 // EDIT CALC PANEL
 // =====================
