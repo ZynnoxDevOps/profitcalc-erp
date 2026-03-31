@@ -993,21 +993,37 @@ tr:hover td {
 .label-price { font-weight: bold; margin-top: 4px; }
 
 @media print {
-    body > *:not(#print-staging-area) {
-        display: none !important;
-    }
-    #print-staging-area {
-        display: flex !important;
-        flex-wrap: wrap;
-        width: 100%;
+    /* Oculta tudo por padrão */
+    body * { visibility: hidden; }
+    body > * { display: none !important; }
+
+    /* === CUPOM DE ATACADO (wholesale-print-staging) === */
+    body:has(#wholesale-print-staging:not(:empty)) #wholesale-print-staging {
+        display: block !important;
+        visibility: visible;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 80mm;
+        padding: 5mm;
         background: white !important;
-        justify-content: flex-start;
-        align-content: flex-start;
+        color: black !important;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 10pt;
+        z-index: 99999;
     }
-    
-    /* Layout padrão: 2 colunas de 50x25mm */
-    #print-staging-area {
+    body:has(#wholesale-print-staging:not(:empty)) #wholesale-print-staging * {
+        visibility: visible;
+        color: black !important;
+    }
+
+    /* === ETIQUETAS (print-staging-area) === */
+    body:has(#print-staging-area:not(:empty)) #print-staging-area {
         display: grid !important;
+        visibility: visible;
+        position: fixed;
+        left: 0;
+        top: 0;
         grid-template-columns: 50mm 50mm;
         gap: 0;
         width: 100mm;
@@ -1016,9 +1032,12 @@ tr:hover td {
         background: white !important;
         justify-content: flex-start;
         align-content: flex-start;
+        z-index: 99999;
     }
-
-    .label-print-item {
+    body:has(#print-staging-area:not(:empty)) #print-staging-area * {
+        visibility: visible;
+    }
+    body:has(#print-staging-area:not(:empty)) .label-print-item {
         display: flex !important;
         width: 50mm !important;
         height: 25mm !important;
@@ -1028,8 +1047,14 @@ tr:hover td {
         box-sizing: border-box;
     }
 
+    .print-header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+    .print-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    .print-table th { text-align: left; border-bottom: 1px solid #000; font-size: 8pt; }
+    .print-footer { border-top: 1px dashed #000; padding-top: 5px; text-align: right; }
+    .no-print { display: none !important; }
+
     @page {
-        size: 100mm auto;
+        size: 80mm auto;
         margin: 0;
     }
 }
@@ -1350,29 +1375,7 @@ tr:hover td {
 .badge-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
 .badge-completed { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
 
-/* Print Styles for Wholesale Coupon */
-@media print {
-    body * { visibility: hidden; }
-    #wholesale-print-staging, #wholesale-print-staging *,
-    #print-staging-area, #print-staging-area * { visibility: visible; }
-    #wholesale-print-staging {
-        position: fixed;
-        left: 0;
-        top: 0;
-        width: 80mm; 
-        padding: 5mm;
-        background: white;
-        color: black !important;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 10pt;
-    }
-    .print-header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
-    .print-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-    .print-table th { text-align: left; border-bottom: 1px solid #000; font-size: 8pt; }
-    .print-footer { border-top: 1px dashed #000; padding-top: 5px; text-align: right; }
-    .no-print { display: none !important; }
-}
-
+/* Print styles movidos para o bloco @media print unificado acima */
 #wholesale-print-staging { display: none; }
 .close-modal {
     cursor: pointer;

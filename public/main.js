@@ -2425,30 +2425,74 @@ function renderWposCart() {
 }
 
 function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
-    let parea = document.getElementById('wholesale-print-staging'); 
+    let parea = document.getElementById('wholesale-print-staging');
     if (!parea) {
         parea = document.createElement('div');
         parea.id = 'wholesale-print-staging';
-        parea.className = 'print-only';
         document.body.appendChild(parea);
     }
-    
-    const html = `
-        <div style="font-family: monospace; font-size: 12px;">
-            <h3>RECIBO ATACADO</h3>
-            <p>Data: ${new Date().toLocaleString()}</p>
-            <table style="width:100%">
-                ${itemsUsed.map(i => `<tr><td>${i.name}</td><td>${i.quantity}</td><td>R$ ${(i.unit_price * i.quantity).toFixed(2)}</td></tr>`).join('')}
-            </table>
-            <p><strong>TOTAL: R$ ${orderData.total_amount.toFixed(2)}</strong></p>
-        </div>
-    `;
 
-    parea.innerHTML = html;
-    
+    let customerName = 'Consumidor Final';
+    if (customerIdSelected) {
+        const c = customers.find(c => c.id == parseInt(customerIdSelected));
+        if (c) customerName = c.name;
+    }
+
+    const orderNo = orderData?.id || '---';
+    const total = orderData?.total_amount ?? itemsUsed.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
+
+    const rows = itemsUsed.map(i => `
+        <tr>
+            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;">${i.name}<br><span style="font-size:9px;color:#555;">${i.color} | ${i.size} — SKU: ${i.sku || '-'}</span></td>
+            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;">${i.quantity}</td>
+            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;">R$ ${Number(i.unit_price).toFixed(2)}</td>
+            <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;font-weight:bold;">R$ ${(Number(i.unit_price) * i.quantity).toFixed(2)}</td>
+        </tr>`).join('');
+
+    parea.innerHTML = `
+        <div style="width:100%;max-width:280px;font-family:'Courier New',monospace;font-size:10px;color:#000;padding:4mm;">
+            <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px;">
+                <strong style="font-size:13px;display:block;margin-bottom:2px;">PROFITCALC ERP</strong>
+                <span style="font-size:9px;">CUPOM NÃO FISCAL — VENDA ATACADO</span><br>
+                <span>Nº ${String(orderNo).padStart(6,'0')} — ${new Date().toLocaleString('pt-BR')}</span>
+            </div>
+            <div style="margin-bottom:8px;border-bottom:1px dashed #000;padding-bottom:6px;">
+                <strong>Cliente:</strong> ${customerName}
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                <thead>
+                    <tr>
+                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:left;">Produto</th>
+                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:center;">Qtd</th>
+                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:right;">Unit.</th>
+                        <th style="border-bottom:1px solid #000;padding-bottom:2px;font-size:9px;text-align:right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="text-align:right;border-top:2px solid #000;padding-top:5px;font-weight:bold;font-size:13px;">
+                TOTAL: R$ ${Number(total).toFixed(2)}
+            </div>
+            <div style="text-align:center;margin-top:15px;font-size:9px;border-top:1px dashed #000;padding-top:8px;">
+                Obrigado pela preferência!<br>Documento sem valor fiscal.
+            </div>
+        </div>`;
+
+    // Torna visível ANTES de imprimir, restaura depois
+    parea.style.display = 'block';
+    parea.style.position = 'fixed';
+    parea.style.top = '0';
+    parea.style.left = '0';
+    parea.style.zIndex = '99999';
+    parea.style.background = 'white';
+
     setTimeout(() => {
         window.print();
-        parea.innerHTML = '';
+        setTimeout(() => {
+            parea.style.display = 'none';
+            parea.innerHTML = '';
+        }, 500);
+
     }, 300);
 }
 
