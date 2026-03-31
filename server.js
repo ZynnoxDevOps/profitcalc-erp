@@ -11,24 +11,20 @@ const SECRET = 'super_secret_profit_key';
 
 // Diagnóstico de boot
 console.log('🚀 Iniciando ProfitCalc ERP...');
-console.log('📦 NODE_ENV:', process.env.NODE_ENV || 'development');
 console.log('🔌 DATABASE_URL configurada:', !!process.env.DATABASE_URL);
 console.log('🌐 PORT:', PORT);
 
-if (!process.env.DATABASE_URL) {
-  console.error('❌ ERRO CRÍTICO: DATABASE_URL não está definida!');
-  console.error('   Configure a variável DATABASE_URL no Railway com a URL do PostgreSQL.');
-  process.exit(1);
-}
-
 // PostgreSQL connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 10
-});
+const dbUrl = process.env.DATABASE_URL || '';
+const pool = new Pool(
+  dbUrl ? {
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
+    max: 10
+  } : {}
+);
 
 // Health check endpoint (sem autenticação)
 app.get('/health', async (req, res) => {
@@ -1062,14 +1058,18 @@ app.delete('/api/wholesale/orders/:id', authenticateToken, async (req, res) => {
 // =====================
 // START SERVER
 // =====================
-initDB().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log('\x1b[32m%s\x1b[0m', '---------------------------------------------------');
-    console.log('\x1b[32m%s\x1b[0m', '🚀 ProfitCalc ERP Online! (PostgreSQL)');
-    console.log('\x1b[32m%s\x1b[0m', '---------------------------------------------------');
-    console.log(`💻 Porta: ${PORT}`);
-  });
-}).catch(err => {
-  console.error('❌ Erro ao inicializar banco de dados:', err);
-  process.exit(1);
+// IMPORTANTE: Servidor sobe PRIMEIRO para Railway detectar a porta
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('\x1b[32m%s\x1b[0m', '---');
+  console.log(`✅ Servidor ouvindo na porta ${PORT}`);
+
+  if (!process.env.DATABASE_URL) {
+    console.error('❌ DATABASE_URL não definida! Configure no Railway.');
+    return;
+  }
+
+  // Conecta ao banco depois que o servidor já está de pé
+  initDB()
+    .then(() => console.log('✅ Banco de dados pronto!'))
+    .catch(err => console.error('❌ Erro no banco:', err.message));
 });
