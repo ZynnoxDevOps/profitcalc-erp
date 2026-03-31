@@ -475,6 +475,155 @@ if (pCalcLabel) {
 
 
 // =====================
+// AUTO-PRICE ENGINE
+// =====================
+// Target profit margin for auto-pricing (32.5% = midpoint of 30-35%)
+const AUTO_PRICE_MARGIN = 0.325;
+
+// Get tax preset for a store name (same logic as existing presets)
+function getStorePreset(storeName) {
+    const lower = (storeName || '').toLowerCase();
+    const found = MARKETPLACE_PRESETS.find(p => lower.includes(p.match));
+    if (found) return { taxP: found.taxP, taxPFixed: found.taxPFixed, taxF: found.taxF, costs: found.costs };
+    // Default: no taxes for unknown stores
+    return { taxP: 0, taxPFixed: 0, taxF: 0, costs: 0 };
+}
+
+// Calculate ideal sale price to hit target margin
+// Formula: s_price = (base_cost + taxF + costs) / (1 - (taxP + taxPFixed)/100 - margin)
+function calcIdealPrice(baseCost, preset, margin = AUTO_PRICE_MARGIN) {
+    const taxPercent = (preset.taxP + preset.taxPFixed) / 100;
+    const divisor = 1 - taxPercent - margin;
+    if (divisor <= 0) return null; // impossible margin with these taxes
+    const sPrice = (baseCost + preset.taxF + preset.costs) / divisor;
+    return Math.ceil(sPrice * 100) / 100; // round up to cent
+}
+
+// Show/hide the auto-price banner based on selected product
+function updateAutoPriceBanner(productId) {
+    const banner = document.getElementById('auto-price-banner');
+    const info   = document.getElementById('auto-price-info');
+    if (!banner) return;
+
+    if (!productId) { banner.style.display = 'none'; return; }
+
+    const prod = catalog.find(p => String(p.id) === String(productId));
+    if (!prod || !prod.base_cost || prod.base_cost <= 0) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    // Count how many stores still need pricing
+    const usedLabels = (prod.prices || []).map(pr => pr.label);
+    const allStores = [{ name: 'Atacado' }, ...allMarketplaces];
+    const pending = allStores.filter(s => !usedLabels.includes(s.name));
+
+    if (pending.length === 0) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    banner.style.display = 'block';
+    if (info) {
+        info.textContent = `Custo: R$ ${prod.base_cost.toFixed(2)} · ${pending.length} loja(s) sem preço · Lucro alvo: ~32.5%`;
+    }
+}
+
+// Hook into product change to show banner
+if (pCalcCatalogId) {
+    pCalcCatalogId.addEventListener('change', () => {
+        updateAutoPriceBanner(pCalcCatalogId.value);
+    });
+}
+
+// Toast helpers
+function showAutoToast(lines) {
+    const toast = document.getElementById('auto-price-toast');
+    const body  = document.getElementById('auto-price-toast-body');
+    if (!toast || !body) return;
+    body.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+    toast.style.display = 'block';
+}
+function hideAutoToast(delay = 4000) {
+    setTimeout(() => {
+        const toast = document.getElementById('auto-price-toast');
+        if (toast) toast.style.display = 'none';
+    }, delay);
+}
+
+// Main auto-price function — called by the banner button
+window.autoCalculateAllStores = async function() {
+    const productId = pCalcCatalogId?.value;
+    if (!productId) { alert('Selecione um produto primeiro.'); return; }
+
+    const prod = catalog.find(p => String(p.id) === String(productId));
+    if (!prod || !prod.base_cost || prod.base_cost <= 0) {
+        alert('Este produto não tem custo cadastrado no catálogo. Cadastre o custo de produção antes.'); return;
+    }
+
+    const usedLabels = (prod.prices || []).map(pr => pr.label);
+    const allStores = [{ name: 'Atacado' }, ...allMarketplaces];
+    const pending = allStores.filter(s => !usedLabels.includes(s.name));
+
+    if (pending.length === 0) {
+        alert('Todas as lojas já têm preço cadastrado para este produto.'); return;
+    }
+
+    const btn = document.getElementById('btn-auto-price');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+
+    const token = localStorage.getItem('token');
+    const results = [];
+
+    for (const store of pending) {
+        const preset = getStorePreset(store.name);
+        const sPrice = calcIdealPrice(prod.base_cost, preset);
+
+        if (!sPrice || sPrice <= 0) {
+            results.push(`❌ ${store.name}: taxas altas demais para atingir 32.5%`);
+            continue;
+        }
+
+        const taxAmount = (sPrice * (preset.taxP + preset.taxPFixed)) / 100;
+        const totalCost = prod.base_cost + taxAmount + preset.taxF + preset.costs;
+        const profit    = sPrice - totalCost;
+        const profitPct = ((profit / sPrice) * 100).toFixed(1);
+        const isAtacado = store.name === 'Atacado';
+        const type      = isAtacado ? 'wholesale' : 'marketplace';
+
+        try {
+            const res = await fetch(`${API_URL}/catalog/${productId}/prices`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify({ type, label: store.name, value: sPrice, cost: totalCost, profit })
+            });
+            if (res.ok) {
+                results.push(`✅ ${store.name}: R$ ${sPrice.toFixed(2)} · Lucro ${profitPct}%`);
+            } else {
+                results.push(`❌ ${store.name}: erro ao salvar`);
+            }
+        } catch(e) {
+            results.push(`❌ ${store.name}: falha de rede`);
+        }
+    }
+
+    // Show toast with results
+    showAutoToast([
+        `<span style="color:#34d399; font-weight:600;">${prod.name}</span>`,
+        ...results
+    ]);
+    hideAutoToast(7000);
+
+    // Reload catalog & update UI
+    await loadCatalog();
+    filterStoresForCalc(productId);
+    updateAutoPriceBanner(productId);
+    pCalcCatalogId.value = productId;
+
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Calcular e Salvar Tudo'; }
+};
+
+// =====================
 // EDIT CALC PANEL
 // =====================
 function updateEditPreview() {
