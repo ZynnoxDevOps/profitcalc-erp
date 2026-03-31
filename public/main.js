@@ -29,6 +29,7 @@ const navPos = document.getElementById('nav-pos');
 const navWholesaleCart = document.getElementById('nav-wholesale-cart');
 const navCustomers = document.getElementById('nav-customers');
 const navWholesaleOrders = document.getElementById('nav-wholesale-orders');
+const navTasks = document.getElementById('nav-tasks');
 const sidebarToggle = document.getElementById('mobile-sidebar-toggle');
 const sidebarOverlay = document.getElementById('sidebar-overlay');
 const userNameDisplay = document.getElementById('user-name-display');
@@ -48,6 +49,7 @@ const posView = document.getElementById('pos-view');
 const customersView = document.getElementById('customers-view');
 const wholesalePosView = document.getElementById('wholesale-pos-view');
 const wholesaleOrdersView = document.getElementById('wholesale-orders-view');
+const tasksView = document.getElementById('tasks-view');
 
 // DOM - Calculator
 const calcForm = document.getElementById('calc-form');
@@ -172,8 +174,8 @@ function showView(view) {
 function switchSubView(view) {
     console.log(`Navigating to: ${view}`);
     // Reset all sub-views and nav links
-    const allViews = [calcView, pricesView, catalogView, stockView, campaignsView, productionView, analysisView, salesView, marketplacesView, labelsView, posView, customersView, wholesalePosView, wholesaleOrdersView];
-    const allNavs = [navCalc, navPrices, navCatalog, navStock, navCampaigns, navProduction, navAnalysis, navSales, navMarketplaces, navLabels, navPos, navWholesaleCart, navCustomers, navWholesaleOrders];
+    const allViews = [calcView, pricesView, catalogView, stockView, campaignsView, productionView, analysisView, salesView, marketplacesView, labelsView, posView, customersView, wholesalePosView, wholesaleOrdersView, tasksView];
+    const allNavs = [navCalc, navPrices, navCatalog, navStock, navCampaigns, navProduction, navAnalysis, navSales, navMarketplaces, navLabels, navPos, navWholesaleCart, navCustomers, navWholesaleOrders, navTasks];
     
     allViews.forEach(v => v?.classList.remove('active'));
     allNavs.forEach(n => n?.classList.remove('active'));
@@ -193,7 +195,8 @@ function switchSubView(view) {
         'pos': [posView, navPos],
         'wholesale-cart': [wholesalePosView, navWholesaleCart],
         'customers': [customersView, navCustomers],
-        'wholesale-orders': [wholesaleOrdersView, navWholesaleOrders]
+        'wholesale-orders': [wholesaleOrdersView, navWholesaleOrders],
+        'tasks': [tasksView, navTasks]
     };
 
     if (viewMap[view]) {
@@ -226,6 +229,7 @@ function switchSubView(view) {
         if (view === 'customers') loadCustomers();
         if (view === 'wholesale-cart') loadWholesaleProducts();
         if (view === 'wholesale-orders') loadWholesaleOrders();
+        if (view === 'tasks') loadTasks();
     } catch (err) {
         console.error(`Error loading data for view ${view}:`, err);
     }
@@ -245,6 +249,7 @@ navPos.onclick = () => switchSubView('pos');
 navWholesaleCart.onclick = () => switchSubView('wholesale-cart');
 navCustomers.onclick = () => switchSubView('customers');
 navWholesaleOrders.onclick = () => switchSubView('wholesale-orders');
+if (navTasks) navTasks.onclick = () => switchSubView('tasks');
 
 // Sidebar Toggle
 if (sidebarToggle) {
@@ -3073,3 +3078,282 @@ window.updatePricePoint = async (productId, priceId, newValue) => {
         console.error('Update price error:', err);
     }
 };
+
+// =====================
+// TASKS MODULE
+// =====================
+let tasksData = [];
+let taskCurrentFilter = 'all';
+let notifQueue = [];
+let notifCurrentIndex = 0;
+let notifDismissed = new Set(); // task IDs ignored in this session
+
+const TASK_STATUS_LABELS = {
+    a_fazer:  '📝 A Fazer',
+    atrasada: '⚠️ Atrasada',
+    concluida:'✅ Concluída'
+};
+
+async function loadTasks() {
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`${API_URL}/tasks`, {
+            headers: { 'Authorization': token }
+        });
+        if (!res.ok) return;
+        tasksData = await res.json();
+        renderTasks();
+        updateTasksBadge();
+    } catch(e) { console.error('loadTasks error', e); }
+}
+
+function renderTasks() {
+    const list = document.getElementById('tasks-list');
+    const empty = document.getElementById('tasks-empty');
+    if (!list) return;
+
+    const filtered = taskCurrentFilter === 'all'
+        ? tasksData
+        : tasksData.filter(t => t.status === taskCurrentFilter);
+
+    // Update filter buttons
+    ['all','a_fazer','atrasada','concluida'].forEach(f => {
+        const btn = document.getElementById(`filter-${f}`);
+        if (btn) btn.classList.toggle('active-filter', taskCurrentFilter === f);
+    });
+
+    if (filtered.length === 0) {
+        list.innerHTML = '';
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    list.innerHTML = filtered.map(t => {
+        const createdAt = new Date(t.created_at).toLocaleString('pt-BR');
+        const lastNotif = t.last_notified_at
+            ? `Última notif: ${new Date(t.last_notified_at).toLocaleString('pt-BR')}`
+            : 'Ainda não notificado';
+        return `
+        <div class="task-card status-${t.status}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; margin-bottom:0.5rem;">
+                <div>
+                    <div style="font-weight:700; font-size:1rem; margin-bottom:4px;">${t.title}</div>
+                    ${t.description ? `<div style="font-size:0.85rem; color:var(--text-muted); line-height:1.5;">${t.description}</div>` : ''}
+                </div>
+                <span class="task-status-badge badge-${t.status}">${TASK_STATUS_LABELS[t.status]}</span>
+            </div>
+            <div class="task-notify-info">
+                🔔 A cada ${t.notify_hours}h &nbsp;·&nbsp; ${lastNotif} &nbsp;·&nbsp; Criada ${createdAt}
+            </div>
+            <div class="task-actions">
+                ${t.status !== 'concluida' ? `<button class="task-btn btn-done" onclick="setTaskStatus(${t.id},'concluida')">✅ Concluída</button>` : ''}
+                ${t.status !== 'atrasada'  ? `<button class="task-btn btn-late" onclick="setTaskStatus(${t.id},'atrasada')">⚠️ Atrasada</button>` : ''}
+                ${t.status !== 'a_fazer'   ? `<button class="task-btn" onclick="setTaskStatus(${t.id},'a_fazer')">📝 A Fazer</button>` : ''}
+                <button class="task-btn btn-edit" onclick="editTask(${t.id})">✏️ Editar</button>
+                <button class="task-btn btn-del" onclick="deleteTask(${t.id})">🗑️ Excluir</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+window.filterTasks = function(filter) {
+    taskCurrentFilter = filter;
+    renderTasks();
+};
+
+window.setTaskStatus = async function(id, status) {
+    const token = localStorage.getItem('token');
+    const task = tasksData.find(t => t.id === id);
+    if (!task) return;
+    try {
+        await fetch(`${API_URL}/tasks/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify({ title: task.title, description: task.description, notify_hours: task.notify_hours, status })
+        });
+        await loadTasks();
+    } catch(e) { alert('Erro ao atualizar status.'); }
+};
+
+window.editTask = function(id) {
+    const task = tasksData.find(t => t.id === id);
+    if (!task) return;
+    document.getElementById('task-edit-id').value = task.id;
+    document.getElementById('task-title').value = task.title;
+    document.getElementById('task-desc').value = task.description || '';
+    document.getElementById('task-notify-hours').value = task.notify_hours;
+    document.getElementById('task-status').value = task.status;
+    document.getElementById('task-form-title').textContent = '✏️ Editar Tarefa';
+    const cancelBtn = document.getElementById('task-cancel-btn');
+    if (cancelBtn) cancelBtn.style.display = 'block';
+    document.getElementById('task-title').focus();
+};
+
+window.cancelTaskEdit = function() {
+    document.getElementById('task-form').reset();
+    document.getElementById('task-edit-id').value = '';
+    document.getElementById('task-form-title').textContent = '➕ Nova Tarefa';
+    const cancelBtn = document.getElementById('task-cancel-btn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+};
+
+window.deleteTask = async function(id) {
+    if (!confirm('Deseja excluir esta tarefa?')) return;
+    const token = localStorage.getItem('token');
+    try {
+        await fetch(`${API_URL}/tasks/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': token }
+        });
+        await loadTasks();
+    } catch(e) { alert('Erro ao excluir tarefa.'); }
+};
+
+// Task form submit
+const taskForm = document.getElementById('task-form');
+if (taskForm) {
+    taskForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const token = localStorage.getItem('token');
+        const editId = document.getElementById('task-edit-id').value;
+        const payload = {
+            title:        document.getElementById('task-title').value.trim(),
+            description:  document.getElementById('task-desc').value.trim(),
+            notify_hours: Number(document.getElementById('task-notify-hours').value) || 24,
+            status:       document.getElementById('task-status').value
+        };
+        if (!payload.title) return;
+
+        try {
+            const url    = editId ? `${API_URL}/tasks/${editId}` : `${API_URL}/tasks`;
+            const method = editId ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error((await res.json()).message);
+            cancelTaskEdit();
+            await loadTasks();
+        } catch(err) {
+            alert('Erro: ' + err.message);
+        }
+    };
+}
+
+// =====================
+// TASK NOTIFICATIONS (polling every 60s)
+// =====================
+function updateTasksBadge() {
+    const badge = document.getElementById('tasks-notif-badge');
+    if (!badge) return;
+    const now = Date.now();
+    const pending = tasksData.filter(t => {
+        if (t.status === 'concluida') return false;
+        if (notifDismissed.has(t.id)) return false;
+        const ref = t.last_notified_at
+            ? new Date(t.last_notified_at).getTime()
+            : new Date(t.created_at).getTime();
+        return (now - ref) >= (t.notify_hours * 3600 * 1000);
+    });
+    if (pending.length > 0) {
+        badge.textContent = pending.length;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function checkTaskNotifications() {
+    if (!localStorage.getItem('token')) return;
+    const now = Date.now();
+    notifQueue = tasksData.filter(t => {
+        if (t.status === 'concluida') return false;
+        if (notifDismissed.has(t.id)) return false;
+        const ref = t.last_notified_at
+            ? new Date(t.last_notified_at).getTime()
+            : new Date(t.created_at).getTime();
+        return (now - ref) >= (t.notify_hours * 3600 * 1000);
+    });
+    notifCurrentIndex = 0;
+    if (notifQueue.length > 0) showNextNotification();
+}
+
+function showNextNotification() {
+    if (notifCurrentIndex >= notifQueue.length) return;
+    const task = notifQueue[notifCurrentIndex];
+    const popup = document.getElementById('task-notification-popup');
+    const titleEl = document.getElementById('notif-task-title');
+    const descEl  = document.getElementById('notif-task-desc');
+    const queueEl = document.getElementById('notif-queue-info');
+    if (!popup) return;
+
+    if (titleEl) titleEl.textContent = task.title;
+    if (descEl)  descEl.textContent  = task.description || '';
+    if (queueEl) {
+        const remaining = notifQueue.length - notifCurrentIndex - 1;
+        queueEl.textContent = remaining > 0 ? `+${remaining} lembrete(s) aguardando` : '';
+    }
+    popup.dataset.taskId = task.id;
+    // Re-trigger animation
+    popup.style.animation = 'none';
+    popup.offsetHeight; // reflow
+    popup.style.animation = '';
+    popup.style.display = 'block';
+}
+
+window.markNotificationRead = async function() {
+    const popup = document.getElementById('task-notification-popup');
+    if (!popup) return;
+    const taskId = Number(popup.dataset.taskId);
+    const token = localStorage.getItem('token');
+    try {
+        await fetch(`${API_URL}/tasks/${taskId}/notify`, {
+            method: 'PUT',
+            headers: { 'Authorization': token }
+        });
+        notifDismissed.add(taskId);
+        // Update local data so badge recalculates correctly
+        const task = tasksData.find(t => t.id === taskId);
+        if (task) task.last_notified_at = new Date().toISOString();
+    } catch(e) {}
+    hideNotificationAndAdvance();
+    updateTasksBadge();
+};
+
+window.ignoreNotification = function() {
+    const popup = document.getElementById('task-notification-popup');
+    const taskId = Number(popup?.dataset.taskId);
+    if (taskId) {
+        notifDismissed.add(taskId);
+        // Re-show after 30 min
+        setTimeout(() => notifDismissed.delete(taskId), 30 * 60 * 1000);
+    }
+    hideNotificationAndAdvance();
+    updateTasksBadge();
+};
+
+function hideNotificationAndAdvance() {
+    const popup = document.getElementById('task-notification-popup');
+    if (popup) popup.style.display = 'none';
+    notifCurrentIndex++;
+    if (notifCurrentIndex < notifQueue.length) {
+        setTimeout(showNextNotification, 400);
+    }
+}
+
+// Start polling
+setInterval(async () => {
+    if (!localStorage.getItem('token')) return;
+    await loadTasks();
+    checkTaskNotifications();
+}, 60000);
+
+// Initial check after login (slight delay to allow catalog to load first)
+setTimeout(() => {
+    if (localStorage.getItem('token')) {
+        loadTasks().then(checkTaskNotifications);
+    }
+}, 3000);
+

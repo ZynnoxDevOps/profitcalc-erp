@@ -202,6 +202,17 @@ async function initDB() {
       quantity INTEGER,
       unit_price REAL
     );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id SERIAL PRIMARY KEY,
+      company_id INTEGER,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      notify_hours REAL DEFAULT 24,
+      status TEXT DEFAULT 'a_fazer',
+      last_notified_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
   `);
 
   console.log('✅ Tabelas criadas/verificadas com sucesso.');
@@ -1129,6 +1140,74 @@ app.post('/api/wholesale/orders', authenticateToken, async (req, res) => {
 app.delete('/api/wholesale/orders/:id', authenticateToken, async (req, res) => {
   await pool.query('DELETE FROM wholesale_orders WHERE id = $1', [req.params.id]);
   res.json({ message: 'Pedido removido' });
+});
+
+// =====================
+// TASKS ROUTES
+// =====================
+app.get('/api/tasks', authenticateToken, async (req, res) => {
+  const { company_id } = req.user;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM tasks WHERE company_id = $1 ORDER BY created_at DESC',
+      [company_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/tasks', authenticateToken, async (req, res) => {
+  const { company_id } = req.user;
+  const { title, description, notify_hours } = req.body;
+  if (!title) return res.status(400).json({ message: 'Título obrigatório.' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO tasks (company_id, title, description, notify_hours) VALUES ($1,$2,$3,$4) RETURNING *',
+      [company_id, title, description || '', Number(notify_hours) || 24]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
+  const { company_id } = req.user;
+  const { title, description, notify_hours, status } = req.body;
+  try {
+    await pool.query(
+      'UPDATE tasks SET title=$1, description=$2, notify_hours=$3, status=$4 WHERE id=$5 AND company_id=$6',
+      [title, description || '', Number(notify_hours) || 24, status || 'a_fazer', req.params.id, company_id]
+    );
+    res.json({ message: 'Tarefa atualizada.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/tasks/:id/notify', authenticateToken, async (req, res) => {
+  const { company_id } = req.user;
+  try {
+    await pool.query(
+      'UPDATE tasks SET last_notified_at = NOW() WHERE id=$1 AND company_id=$2',
+      [req.params.id, company_id]
+    );
+    res.json({ message: 'Notificação marcada como lida.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
+  const { company_id } = req.user;
+  try {
+    await pool.query('DELETE FROM tasks WHERE id=$1 AND company_id=$2', [req.params.id, company_id]);
+    res.json({ message: 'Tarefa removida.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // =====================

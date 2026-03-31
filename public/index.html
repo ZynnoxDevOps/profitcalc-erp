@@ -84,6 +84,14 @@
                         <button id="nav-wholesale-orders" class="nav-link"><span class="nav-icon">📑</span> Vendas
                             Atacado</button>
                     </div>
+
+                    <div class="nav-group">
+                        <div class="nav-group-title">Gestão</div>
+                        <button id="nav-tasks" class="nav-link">
+                            <span class="nav-icon">📋</span> Tarefas
+                            <span id="tasks-notif-badge" style="display:none; margin-left:auto; background:#ef4444; color:white; font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:20px; min-width:20px; text-align:center;">0</span>
+                        </button>
+                    </div>
                 </nav>
 
                 <div class="sidebar-footer">
@@ -741,6 +749,73 @@
                         </div>
                     </div>
                 </div>
+                <!-- Tasks View -->
+                <div id="tasks-view" class="sub-view">
+                    <div class="catalog-header" style="margin-bottom:2rem;">
+                        <div>
+                            <h2>📋 Tarefas</h2>
+                            <p style="color:var(--text-muted);font-size:0.9rem;">Gerencie suas tarefas e receba lembretes automáticos.</p>
+                        </div>
+                    </div>
+
+                    <div class="calc-edit-grid">
+                        <!-- Left: Create Task Form -->
+                        <section class="calc-section">
+                            <div class="glass-card">
+                                <h2 id="task-form-title">➕ Nova Tarefa</h2>
+                                <form id="task-form">
+                                    <input type="hidden" id="task-edit-id">
+                                    <div class="input-group">
+                                        <label for="task-title">Título da Tarefa</label>
+                                        <input type="text" id="task-title" placeholder="Ex: Atualizar preços do marketplace" required>
+                                    </div>
+                                    <div class="input-group">
+                                        <label for="task-desc">Descrição</label>
+                                        <textarea id="task-desc" rows="4" placeholder="Detalhes da tarefa..." style="width:100%; resize:vertical;"></textarea>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="task-notify-hours">Notificar a cada (horas)</label>
+                                            <input type="number" id="task-notify-hours" min="0.5" step="0.5" value="24" placeholder="24">
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="task-status">Status</label>
+                                            <select id="task-status">
+                                                <option value="a_fazer">📝 A Fazer</option>
+                                                <option value="atrasada">⚠️ Atrasada</option>
+                                                <option value="concluida">✅ Concluída</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; gap:1rem;">
+                                        <button type="submit" class="btn-primary" id="task-submit-btn">💾 Salvar Tarefa</button>
+                                        <button type="button" id="task-cancel-btn" onclick="cancelTaskEdit()" style="display:none; flex:1; padding:14px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:12px; color:var(--text-muted); font-size:1rem; cursor:pointer;">✕ Cancelar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </section>
+
+                        <!-- Right: Task List -->
+                        <section class="calc-section">
+                            <div class="glass-card">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:0.75rem;">
+                                    <h2 style="margin-bottom:0;">📌 Lista de Tarefas</h2>
+                                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                                        <button onclick="filterTasks('all')" id="filter-all" class="task-filter-btn active-filter">Todas</button>
+                                        <button onclick="filterTasks('a_fazer')" id="filter-a_fazer" class="task-filter-btn">A Fazer</button>
+                                        <button onclick="filterTasks('atrasada')" id="filter-atrasada" class="task-filter-btn">Atrasada</button>
+                                        <button onclick="filterTasks('concluida')" id="filter-concluida" class="task-filter-btn">Concluída</button>
+                                    </div>
+                                </div>
+                                <div id="tasks-list" style="display:flex; flex-direction:column; gap:1rem;"></div>
+                                <div id="tasks-empty" style="text-align:center; padding:2.5rem; color:var(--text-muted); display:none;">
+                                    <div style="font-size:2.5rem; margin-bottom:1rem;">📋</div>
+                                    <p>Nenhuma tarefa encontrada. Crie sua primeira tarefa!</p>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
             </main>
         </section>
 
@@ -754,6 +829,23 @@
                 <strong style="color:#34d399; font-size:0.95rem;">Precificação Automática</strong>
             </div>
             <div id="auto-price-toast-body" style="font-size:0.85rem; color:var(--text-muted); display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
+
+        <!-- Task Notification Popup -->
+        <div id="task-notification-popup" style="display:none; position:fixed; top:1.5rem; right:1.5rem; z-index:10000; background:rgba(17,24,39,0.98); border:1px solid rgba(251,191,36,0.45); border-radius:18px; padding:1.5rem; min-width:320px; max-width:420px; box-shadow:0 8px 40px rgba(0,0,0,0.6); backdrop-filter:blur(16px); animation:slideInRight 0.35s ease;">
+            <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:1rem;">
+                <span style="font-size:1.6rem;">🔔</span>
+                <div style="flex:1;">
+                    <div style="font-size:0.7rem; color:#fbbf24; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Lembrete de Tarefa</div>
+                    <div id="notif-task-title" style="font-size:1rem; font-weight:700; color:white; margin-bottom:6px;"></div>
+                    <div id="notif-task-desc" style="font-size:0.82rem; color:var(--text-muted); line-height:1.5; max-height:60px; overflow:hidden;"></div>
+                </div>
+            </div>
+            <div style="display:flex; gap:0.75rem;">
+                <button onclick="markNotificationRead()" style="flex:1; padding:10px; background:rgba(16,185,129,0.2); border:1px solid rgba(16,185,129,0.4); border-radius:10px; color:#34d399; font-weight:600; font-size:0.88rem; cursor:pointer; transition:all 0.2s;">✓ Marcar como Lida</button>
+                <button onclick="ignoreNotification()" style="flex:1; padding:10px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:10px; color:var(--text-muted); font-weight:600; font-size:0.88rem; cursor:pointer; transition:all 0.2s;">✕ Ignorar</button>
+            </div>
+            <div id="notif-queue-info" style="text-align:center; font-size:0.75rem; color:var(--text-muted); margin-top:0.75rem;"></div>
         </div>
 
         <!-- Floating Cart Button -->
