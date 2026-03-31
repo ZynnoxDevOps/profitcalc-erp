@@ -2431,47 +2431,84 @@ function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
         if (c) customerName = c.name;
     }
 
-    const orderNo = orderData?.id || '---';
-    const total = orderData?.total_amount ?? itemsUsed.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
+    const orderNo  = orderData?.id || '---';
+    const total    = orderData?.total_amount ?? itemsUsed.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
+    const dataHora = new Date().toLocaleString('pt-BR');
 
+    // Monta linhas da tabela
     const rows = itemsUsed.map(i =>
         '<tr>' +
-        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;">' + i.name + '<br><span style="font-size:9px;color:#555;">' + (i.color||'-') + ' | ' + (i.size||'-') + ' &mdash; SKU: ' + (i.sku||'-') + '</span></td>' +
-        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;">' + i.quantity + '</td>' +
-        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;">R$ ' + Number(i.unit_price).toFixed(2) + '</td>' +
-        '<td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;font-weight:bold;">R$ ' + (Number(i.unit_price) * i.quantity).toFixed(2) + '</td>' +
+        '<td>' + i.name + ' (' + (i.color||'-') + '/' + (i.size||'-') + ')<br>' +
+        '<small>SKU: ' + (i.sku||'-') + '</small></td>' +
+        '<td align="center">' + i.quantity + '</td>' +
+        '<td align="right">R$' + Number(i.unit_price).toFixed(2) + '</td>' +
+        '<td align="right"><b>R$' + (Number(i.unit_price) * i.quantity).toFixed(2) + '</b></td>' +
         '</tr>'
     ).join('');
 
-    const win = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=1');
-    if (!win) { alert('Permita pop-ups neste navegador para imprimir o cupom.'); return; }
-
-    const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Cupom Atacado</title>' +
-        '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:"Courier New",Courier,monospace;font-size:10px;color:#000;background:#fff;padding:4mm;}table{width:100%;border-collapse:collapse;}strong{font-weight:bold;}@media print{@page{size:80mm auto;margin:0;}body{padding:2mm;}button{display:none;}}</style>' +
+    // HTML do cupom — otimizado para Epson 80mm
+    const conteudo =
+        '<!DOCTYPE html>' +
+        '<html><head><meta charset="UTF-8">' +
+        '<style>' +
+        '  * { margin:0; padding:0; box-sizing:border-box; }' +
+        '  body { font-family:"Courier New",Courier,monospace; font-size:11pt; color:#000; background:#fff; width:72mm; }' +
+        '  table { width:100%; border-collapse:collapse; font-size:9pt; }' +
+        '  td, th { padding:2px 1px; vertical-align:top; }' +
+        '  th { border-bottom:1px solid #000; text-align:left; font-size:8pt; }' +
+        '  .center { text-align:center; }' +
+        '  .right { text-align:right; }' +
+        '  .sep { border-top:1px dashed #000; margin:6px 0; }' +
+        '  .sep2 { border-top:2px solid #000; margin:6px 0; }' +
+        '  .total { font-size:13pt; font-weight:bold; text-align:right; padding-top:4px; }' +
+        '  .rodape { text-align:center; font-size:8pt; padding-top:6px; }' +
+        '  @page { size:80mm auto; margin:2mm; }' +
+        '</style>' +
         '</head><body>' +
-        '<div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px;">' +
-            '<strong style="font-size:14px;display:block;margin-bottom:2px;">PROFITCALC ERP</strong>' +
-            '<span style="font-size:9px;">CUPOM NAO FISCAL &mdash; VENDA ATACADO</span><br>' +
-            '<span>N&ordm; ' + String(orderNo).padStart(6,'0') + ' &mdash; ' + new Date().toLocaleString('pt-BR') + '</span>' +
-        '</div>' +
-        '<div style="margin-bottom:8px;border-bottom:1px dashed #000;padding-bottom:6px;"><strong>Cliente:</strong> ' + customerName + '</div>' +
-        '<table style="margin-bottom:8px;">' +
-            '<thead><tr>' +
-                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:left;">Produto</th>' +
-                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:center;">Qtd</th>' +
-                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:right;">Unit.</th>' +
-                '<th style="border-bottom:1px solid #000;padding:2px 0;text-align:right;">Total</th>' +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
+        '<div class="center"><b style="font-size:14pt;">PROFITCALC ERP</b><br>' +
+        '<span style="font-size:8pt;">CUPOM NAO FISCAL — ATACADO</span><br>' +
+        'N: ' + String(orderNo).padStart(6,'0') + '<br>' +
+        dataHora + '</div>' +
+        '<div class="sep"></div>' +
+        '<div><b>Cliente:</b> ' + customerName + '</div>' +
+        '<div class="sep"></div>' +
+        '<table>' +
+        '<thead><tr><th>Produto</th><th align="center">Qtd</th><th align="right">Unit</th><th align="right">Total</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
         '</table>' +
-        '<div style="text-align:right;border-top:2px solid #000;padding-top:5px;font-weight:bold;font-size:13px;">TOTAL: R$ ' + Number(total).toFixed(2) + '</div>' +
-        '<div style="text-align:center;margin-top:15px;font-size:9px;border-top:1px dashed #000;padding-top:8px;">Obrigado pela preferencia!<br>Documento sem valor fiscal.</div>' +
-        '<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};<\/script>' +
+        '<div class="sep2"></div>' +
+        '<div class="total">TOTAL: R$ ' + Number(total).toFixed(2) + '</div>' +
+        '<div class="sep"></div>' +
+        '<div class="rodape">Obrigado pela preferencia!<br>Documento sem valor fiscal.</div>' +
         '</body></html>';
 
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
+    // Remove iframe anterior se existir
+    const oldFrame = document.getElementById('_receipt_frame');
+    if (oldFrame) oldFrame.remove();
+
+    // Cria iframe oculto
+    const iframe = document.createElement('iframe');
+    iframe.id = '_receipt_frame';
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:80mm;height:600px;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    // Escreve conteúdo no iframe
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(conteudo);
+    iframe.contentDocument.close();
+
+    // Aguarda renderização e dispara impressão
+    setTimeout(function() {
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch(e) {
+            console.error('Erro ao imprimir:', e);
+            alert('Erro ao imprimir. Tente abrir o cupom manualmente.');
+        }
+        // Remove iframe após impressão
+        setTimeout(function() { iframe.remove(); }, 2000);
+    }, 400);
 }
 
 
