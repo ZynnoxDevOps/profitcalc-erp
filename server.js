@@ -26,15 +26,31 @@ const pool = new Pool(
   } : {}
 );
 
-// Health check endpoint (sem autenticação)
+// BUILD: 2026-03-31-v5
+// =====================
+// EXPRESS MIDDLEWARE
+// =====================
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cookieParser());
+app.use(express.static('public'));
+
+// Ping imediato (sem banco) - confirma que servidor está vivo
+app.get('/ping', (req, res) => {
+  res.json({ alive: true, port: PORT, db_url_set: !!process.env.DATABASE_URL, ts: Date.now() });
+});
+
+// Health check com banco
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', db: 'connected', port: PORT, timestamp: new Date().toISOString() });
   } catch (err) {
-    res.status(500).json({ status: 'error', db: 'disconnected', error: err.message });
+    res.status(500).json({ status: 'error', db: 'disconnected', port: PORT, error: err.message });
   }
 });
+
 
 // =====================
 // INIT DATABASE
@@ -217,14 +233,6 @@ async function seed() {
   }
 }
 
-// =====================
-// EXPRESS MIDDLEWARE
-// =====================
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(cookieParser());
-app.use(express.static('public'));
 
 // =====================
 // AUTH MIDDLEWARE
