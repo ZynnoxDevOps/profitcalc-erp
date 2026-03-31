@@ -2069,6 +2069,7 @@ window.deleteCustomer = async (id) => {
 // Wholesale POS Logic
 let wposItems = [];
 let wposScanTimer = null;
+let wposFocusListenerAttached = false; // Flag para evitar acúmulo de listeners
 
 // DOM Access
 const wposBarcodeBox = () => document.getElementById('wpos-barcode-input');
@@ -2077,6 +2078,16 @@ const wposCartBody = () => document.getElementById('wpos-cart-body');
 const wposTotalStr = () => document.getElementById('wpos-total');
 const wposFeedback = () => document.getElementById('wpos-feedback');
 const wposStatusLight = () => document.getElementById('wpos-status-light');
+
+function wposFocusInput() {
+    const inp = wposBarcodeBox();
+    if (inp) {
+        inp.focus();
+        // Garante o cursor no final sem selecionar o texto
+        const len = inp.value.length;
+        inp.setSelectionRange(len, len);
+    }
+}
 
 // Setup Wholesale POS view
 window.loadWholesaleProducts = async () => {
@@ -2091,12 +2102,12 @@ window.loadWholesaleProducts = async () => {
 
     const input = wposBarcodeBox();
     if (input) {
-        input.value = '';
-        input.focus();
-
-        // Remove listeners anteriores para evitar duplicatas
+        // Remove listeners anteriores para evitar duplicatas via cloneNode
         const newInput = input.cloneNode(true);
         input.parentNode.replaceChild(newInput, input);
+
+        newInput.value = '';
+        newInput.focus();
 
         // Scanners físicos digitam o código e enviam Enter automaticamente
         // Fallback: timer de 600ms caso o scanner não envie Enter
@@ -2107,9 +2118,9 @@ window.loadWholesaleProducts = async () => {
                 e.preventDefault();
                 clearTimeout(scanTimer);
                 const val = newInput.value.trim();
+                newInput.value = ''; // Limpa ANTES de processar para evitar seleção
                 if (val) {
                     processWposInput(val);
-                    newInput.value = '';
                 }
                 newInput.focus();
             }
@@ -2121,20 +2132,27 @@ window.loadWholesaleProducts = async () => {
             if (!val) return;
             // Fallback: dispara após 600ms sem Enter (ex: scanner sem Enter automático)
             scanTimer = setTimeout(() => {
-                if (newInput.value.trim()) {
-                    processWposInput(newInput.value.trim());
-                    newInput.value = '';
+                const currentVal = newInput.value.trim();
+                if (currentVal) {
+                    newInput.value = ''; // Limpa ANTES de processar
+                    processWposInput(currentVal);
                     newInput.focus();
                 }
             }, 600);
         });
 
-        // Sempre manter o foco no campo (clicou em qualquer lugar da tela, volta o foco)
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('button') && !e.target.closest('select') && !e.target.closest('input:not(#wpos-barcode-input)')) {
-                newInput.focus();
-            }
-        });
+        // Adiciona listener de foco uma única vez (evita acúmulo)
+        if (!wposFocusListenerAttached) {
+            wposFocusListenerAttached = true;
+            document.addEventListener('click', (e) => {
+                const wholesaleView = document.getElementById('wholesale-pos-view');
+                // Só reenfoca se a view atacado estiver ativa
+                if (!wholesaleView || !wholesaleView.classList.contains('active')) return;
+                if (!e.target.closest('button') && !e.target.closest('select') && !e.target.closest('input')) {
+                    wposFocusInput();
+                }
+            });
+        }
     }
 
     renderWposCart();
@@ -2256,14 +2274,14 @@ function showWposFeedback(msg, type) {
 window.removeWposItem = (idx) => {
     wposItems.splice(idx, 1);
     renderWposCart();
-    wposBarcodeBox()?.focus();
+    wposFocusInput();
 };
 
 window.changeWposQty = (idx, delta) => {
     wposItems[idx].quantity += delta;
     if (wposItems[idx].quantity <= 0) wposItems.splice(idx, 1);
     renderWposCart();
-    wposBarcodeBox()?.focus();
+    wposFocusInput();
 };
 
 function renderWposCart() {
