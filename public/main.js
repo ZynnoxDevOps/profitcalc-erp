@@ -2066,119 +2066,142 @@ window.deleteCustomer = async (id) => {
     } catch (err) { console.error(err); }
 };
 
-// Wholesale POS Logic
+// =====================================================================
+// WHOLESALE POS — PDV DE ATACADO
+// =====================================================================
 let wposItems = [];
 let wposScanTimer = null;
-let wposFocusListenerAttached = false; // Flag para evitar acúmulo de listeners
+let wposFocusListenerAdded = false;
 
-// DOM Access
-const wposBarcodeBox = () => document.getElementById('wpos-barcode-input');
-const wposCustomerSelect = () => document.getElementById('wpos-customer-select');
-const wposCartBody = () => document.getElementById('wpos-cart-body');
-const wposTotalStr = () => document.getElementById('wpos-total');
-const wposFeedback = () => document.getElementById('wpos-feedback');
-const wposStatusLight = () => document.getElementById('wpos-status-light');
+const wposBarcodeBox    = () => document.getElementById('wpos-barcode-input');
+const wposCustomerSel   = () => document.getElementById('wpos-customer-select');
+const wposCartBody      = () => document.getElementById('wpos-cart-body');
+const wposTotalStr      = () => document.getElementById('wpos-total');
+const wposFeedbackEl    = () => document.getElementById('wpos-feedback');
+const wposStatusLightEl = () => document.getElementById('wpos-status-light');
 
-function wposFocusInput() {
-    const inp = wposBarcodeBox();
-    if (inp) {
-        inp.focus();
-        // Garante o cursor no final sem selecionar o texto
-        const len = inp.value.length;
-        inp.setSelectionRange(len, len);
-    }
-}
-
-// Setup Wholesale POS view
 window.loadWholesaleProducts = async () => {
     if (catalog.length === 0) await loadCatalog();
     if (customers.length === 0) await loadCustomers();
 
-    const cs = wposCustomerSelect();
+    // Preenche select de cliente
+    const cs = wposCustomerSel();
     if (cs) {
-        cs.innerHTML = '<option value="">Consumidor Final</option>' + 
+        cs.innerHTML = '<option value="">Consumidor Final</option>' +
             customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     }
 
-    const input = wposBarcodeBox();
-    if (input) {
-        // Remove listeners anteriores para evitar duplicatas via cloneNode
-        const newInput = input.cloneNode(true);
-        input.parentNode.replaceChild(newInput, input);
-
+    // Clona input para remover listeners antigos (evita duplicatas)
+    const oldInput = wposBarcodeBox();
+    if (oldInput) {
+        const newInput = oldInput.cloneNode(true);
+        oldInput.parentNode.replaceChild(newInput, oldInput);
         newInput.value = '';
         newInput.focus();
 
-        // Scanners físicos digitam o código e enviam Enter automaticamente
-        // Fallback: timer de 600ms caso o scanner não envie Enter
-        let scanTimer = null;
-
+        // -------------------------------------------------------
+        // DETECÇÃO INSTANTÂNEA DE SCANNER SEM ENTER
+        // Timer de 120ms: processa quando parar de receber chars.
+        // Scanner físico injeta todos os chars em < 50ms total.
+        // Enter também é suportado se o scanner enviar.
+        // -------------------------------------------------------
         newInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                clearTimeout(scanTimer);
+                clearTimeout(wposScanTimer);
                 const val = newInput.value.trim();
-                newInput.value = ''; // Limpa ANTES de processar para evitar seleção
-                if (val) {
+                if (val.length >= 3) {
+                    newInput.value = '';
                     processWposInput(val);
+                    newInput.focus();
                 }
-                newInput.focus();
             }
         });
 
         newInput.addEventListener('input', () => {
-            clearTimeout(scanTimer);
+            clearTimeout(wposScanTimer);
             const val = newInput.value.trim();
             if (!val) return;
-            // Fallback: dispara após 600ms sem Enter (ex: scanner sem Enter automático)
-            scanTimer = setTimeout(() => {
-                const currentVal = newInput.value.trim();
-                if (currentVal) {
-                    newInput.value = ''; // Limpa ANTES de processar
-                    processWposInput(currentVal);
-                    newInput.focus();
+            wposScanTimer = setTimeout(() => {
+                const captured = newInput.value.trim();
+                if (captured.length >= 3) {
+                    newInput.value = '';
+                    processWposInput(captured);
+                    setTimeout(() => { newInput.focus(); newInput.setSelectionRange(0, 0); }, 20);
                 }
-            }, 600);
+            }, 120);
         });
 
-        // Adiciona listener de foco uma única vez (evita acúmulo)
-        if (!wposFocusListenerAttached) {
-            wposFocusListenerAttached = true;
+        // Listener único de reenfoque ao clicar fora
+        if (!wposFocusListenerAdded) {
+            wposFocusListenerAdded = true;
             document.addEventListener('click', (e) => {
-                const wholesaleView = document.getElementById('wholesale-pos-view');
-                // Só reenfoca se a view atacado estiver ativa
-                if (!wholesaleView || !wholesaleView.classList.contains('active')) return;
+                const view = document.getElementById('wholesale-pos-view');
+                if (!view?.classList.contains('active')) return;
                 if (!e.target.closest('button') && !e.target.closest('select') && !e.target.closest('input')) {
-                    wposFocusInput();
+                    const inp = wposBarcodeBox();
+                    if (inp) { inp.focus(); inp.setSelectionRange(0, 0); }
                 }
             });
         }
+    }
+
+    // Botão Finalizar Venda
+    const btnSubmit = document.getElementById('btn-submit-wpos');
+    if (btnSubmit && !btnSubmit._wposHandlerAttached) {
+        btnSubmit._wposHandlerAttached = true;
+        btnSubmit.onclick = async () => {
+            if (wposItems.length === 0) { alert('O carrinho está vazio!'); return; }
+            const customerId = wposCustomerSel()?.value || null;
+            const total = wposItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+            try {
+                btnSubmit.disabled = true;
+                btnSubmit.innerText = 'Processando...';
+                const res = await fetch(`${API_URL}/wholesale/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('token') },
+                    body: JSON.stringify({ customer_id: customerId, items: wposItems, total_amount: total })
+                });
+                if (res.ok) {
+                    const saved = await res.json();
+                    printWholesaleReceipt(saved.order, wposItems, customerId);
+                    wposItems = [];
+                    renderWposCart();
+                    loadCatalog();
+                    showWposFeedback('✅ Venda finalizada com sucesso!', 'success');
+                } else {
+                    const err = await res.json();
+                    alert('Erro: ' + (err.message || 'Falha ao salvar'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Erro de conexão!');
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = '✅ Finalizar Venda e Imprimir Cupom Não-Fiscal';
+            }
+        };
     }
 
     renderWposCart();
 };
 
 function processWposInput(query) {
-    if (!query || query.trim() === '') return;
+    if (!query) return;
     const lowerQuery = query.toLowerCase().trim();
 
-    let variationFound = null;
     let productFound = null;
+    let variationFound = null;
 
     for (const p of catalog) {
-        if (!p.variations) continue;
-        const matchedVar = p.variations.find(v =>
-            v.sku?.toLowerCase() === lowerQuery || v.id.toString() === lowerQuery
+        const v = p.variations?.find(v =>
+            v.sku?.toLowerCase() === lowerQuery ||
+            v.id?.toString() === lowerQuery
         );
-        if (matchedVar) {
-            productFound = p;
-            variationFound = matchedVar;
-            break;
-        }
-        if (p.name.toLowerCase() === lowerQuery && p.variations.length > 0) {
-            productFound = p;
-            variationFound = p.variations[0];
-            break;
+        if (v) { productFound = p; variationFound = v; break; }
+        // Fallback: nome do produto
+        if (!variationFound && p.name?.toLowerCase() === lowerQuery && p.variations?.length > 0) {
+            productFound = p; variationFound = p.variations[0]; break;
         }
     }
 
@@ -2188,29 +2211,18 @@ function processWposInput(query) {
         return;
     }
 
-    // Busca preço atacado: type='wholesale' OU label='Atacado' (salvo pela Calculadora)
-    let unitPrice = productFound.base_cost || 0;
-    let priceLabel = 'Custo Base';
-    
-    if (productFound.prices && productFound.prices.length > 0) {
-        const wholesalePrice =
-            productFound.prices.find(pr => pr.type === 'wholesale') ||
-            productFound.prices.find(pr => pr.label?.toLowerCase() === 'atacado') ||
-            productFound.prices.find(pr => pr.type === 'wholesale' || pr.label?.toLowerCase().includes('atacad'));
-        
-        if (wholesalePrice && wholesalePrice.value > 0) {
-            unitPrice = Number(wholesalePrice.value);
-            priceLabel = wholesalePrice.label || 'Atacado';
-        }
-    }
+    // Busca preço atacado
+    const wholesalePriceObj = productFound.prices?.find(pr =>
+        pr.type === 'wholesale' ||
+        pr.label?.toLowerCase().includes('atacad')
+    );
+    const unitPrice = wholesalePriceObj ? Number(wholesalePriceObj.value) : (productFound.base_cost || 0);
+    const priceLabel = wholesalePriceObj?.label || 'Custo Base';
 
-    // Adiciona ou incrementa no carrinho
-    const existingIndex = wposItems.findIndex(i => i.variation_id === variationFound.id);
-    let newQty = 1;
-
-    if (existingIndex >= 0) {
-        wposItems[existingIndex].quantity++;
-        newQty = wposItems[existingIndex].quantity;
+    const existing = wposItems.find(i => i.variation_id === variationFound.id);
+    if (existing) {
+        existing.quantity++;
+        showWposFeedback(`✅ <strong>${productFound.name}</strong> (${variationFound.color} | ${variationFound.size}) → <span style="color:#10b981">× ${existing.quantity}</span>`, 'success');
     } else {
         wposItems.push({
             product_id: productFound.id,
@@ -2223,65 +2235,45 @@ function processWposInput(query) {
             price_label: priceLabel,
             quantity: 1
         });
+        showWposFeedback(`✅ <strong>${productFound.name}</strong> (${variationFound.color} | ${variationFound.size}) adicionado — R$ ${unitPrice.toFixed(2)}`, 'success');
     }
 
     setWposLight('success');
-    showWposFeedback(`
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <span style="font-size:1.5rem;">✅</span>
-            <div>
-                <div style="font-weight:700; font-size:1rem;">${productFound.name}</div>
-                <div style="font-size:0.82rem; color:rgba(255,255,255,0.7);">
-                    ${variationFound.color} | ${variationFound.size} &nbsp;·&nbsp;
-                    <span style="color:#fbbf24; font-weight:700;">R$ ${unitPrice.toFixed(2)}</span>
-                    <span style="color:rgba(255,255,255,0.4); font-size:0.75rem;"> (${priceLabel})</span>
-                </div>
-            </div>
-            <span style="margin-left:auto; font-size:1.3rem; background:rgba(16,185,129,0.2); border:1px solid #10b981; border-radius:8px; padding:4px 12px; font-weight:700; color:#10b981;">
-                × ${newQty}
-            </span>
-        </div>
-    `, 'success');
-
     renderWposCart();
 }
 
 function setWposLight(status) {
-    const light = wposStatusLight();
+    const light = wposStatusLightEl();
     if (!light) return;
-    if (status === 'success') {
-        light.style.background = '#10b981';
-        light.style.boxShadow = '0 0 20px #10b981';
-    } else if (status === 'error') {
-        light.style.background = '#ef4444';
-        light.style.boxShadow = '0 0 20px #ef4444';
-    } else {
-        light.style.background = '#fbbf24';
-        light.style.boxShadow = '0 0 15px #fbbf24';
-    }
+    const colors = { success: '#10b981', error: '#ef4444', idle: '#fbbf24' };
+    light.style.background = colors[status] || colors.idle;
+    light.style.boxShadow = `0 0 20px ${colors[status] || colors.idle}`;
     setTimeout(() => {
-        if (light) { light.style.background = '#fbbf24'; light.style.boxShadow = '0 0 15px #fbbf24'; }
-    }, 2000);
+        if (light) { light.style.background = colors.idle; light.style.boxShadow = `0 0 15px ${colors.idle}`; }
+    }, 1500);
 }
 
 function showWposFeedback(msg, type) {
-    const fb = wposFeedback();
+    const fb = wposFeedbackEl();
     if (!fb) return;
-    fb.innerHTML = `<div style="padding:12px 16px; border-radius:10px; background:rgba(${type === 'error' ? '239,68,68' : '16,185,129'},0.15); border:1px solid ${type === 'error' ? '#ef4444' : '#10b981'}; color:white; animation: fadeIn 0.2s ease;">${msg}</div>`;
-    if (type !== 'error') setTimeout(() => { if(fb) fb.innerHTML = ''; }, 3500);
+    const bg = type === 'error' ? '239,68,68' : '16,185,129';
+    const border = type === 'error' ? '#ef4444' : '#10b981';
+    fb.innerHTML = `<div style="padding:10px 15px;border-radius:10px;background:rgba(${bg},0.15);border:1px solid ${border};color:white;font-size:0.88rem;">${msg}</div>`;
+    if (type !== 'error') setTimeout(() => { if (fb) fb.innerHTML = ''; }, 2500);
 }
 
 window.removeWposItem = (idx) => {
     wposItems.splice(idx, 1);
     renderWposCart();
-    wposFocusInput();
+    setTimeout(() => { const inp = wposBarcodeBox(); if (inp) { inp.focus(); inp.setSelectionRange(0,0); } }, 30);
 };
 
 window.changeWposQty = (idx, delta) => {
+    if (!wposItems[idx]) return;
     wposItems[idx].quantity += delta;
     if (wposItems[idx].quantity <= 0) wposItems.splice(idx, 1);
     renderWposCart();
-    wposFocusInput();
+    setTimeout(() => { const inp = wposBarcodeBox(); if (inp) { inp.focus(); inp.setSelectionRange(0,0); } }, 30);
 };
 
 function renderWposCart() {
@@ -2289,84 +2281,148 @@ function renderWposCart() {
     if (!tbd) return;
 
     if (wposItems.length === 0) {
-        tbd.innerHTML = `<tr><td colspan="5" style="padding:2rem; text-align:center; color:var(--text-muted); font-size:0.9rem;">
-            Nenhum item ainda. Bipe um produto para começar. 🛒
+        tbd.innerHTML = `<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:var(--text-muted);">
+            <div style="font-size:2rem;margin-bottom:0.5rem;">🛒</div>
+            Nenhum item. Bipe ou digite o SKU do produto para adicionar.
         </td></tr>`;
     } else {
         tbd.innerHTML = wposItems.map((it, idx) => `
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
-            <td style="padding:12px 10px;">
-                <div style="font-weight:700; font-size:0.95rem;">${it.name}</div>
-                <div style="font-size:0.75rem; color:var(--text-muted);">${it.sku} &nbsp;·&nbsp; ${it.color} | ${it.size}</div>
-                <div style="font-size:0.7rem; color:#fbbf24; margin-top:2px;">${it.price_label || 'Atacado'}</div>
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.07);">
+            <td style="padding:10px 8px;">
+                <div style="font-weight:700;font-size:0.9rem;">${it.name}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">${it.sku}</div>
             </td>
-            <td style="padding:12px 10px; text-align:center;">
-                <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
-                    <button onclick="changeWposQty(${idx}, -1)" style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:white; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;">−</button>
-                    <span style="font-size:1.1rem; font-weight:700; min-width:24px; text-align:center;">${it.quantity}</span>
-                    <button onclick="changeWposQty(${idx}, +1)" style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:white; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;">+</button>
+            <td style="padding:10px 8px;text-align:center;">
+                <span style="background:rgba(139,92,246,0.2);color:#a78bfa;border:1px solid rgba(139,92,246,0.4);border-radius:5px;padding:2px 8px;font-size:0.78rem;font-weight:600;">${it.color}</span>
+            </td>
+            <td style="padding:10px 8px;text-align:center;">
+                <span style="background:rgba(59,130,246,0.2);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);border-radius:5px;padding:2px 8px;font-size:0.82rem;font-weight:700;">${it.size}</span>
+            </td>
+            <td style="padding:10px 8px;text-align:center;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+                    <button onclick="changeWposQty(${idx},-1)" style="width:24px;height:24px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:white;cursor:pointer;">−</button>
+                    <span style="font-size:1rem;font-weight:700;min-width:24px;text-align:center;">${it.quantity}</span>
+                    <button onclick="changeWposQty(${idx},+1)" style="width:24px;height:24px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:white;cursor:pointer;">+</button>
                 </div>
             </td>
-            <td style="padding:12px 10px; text-align:right; font-size:0.95rem;">R$ ${it.unit_price.toFixed(2)}</td>
-            <td style="padding:12px 10px; text-align:right; color:#10b981; font-weight:700; font-size:1rem;">R$ ${(it.unit_price * it.quantity).toFixed(2)}</td>
-            <td style="padding:12px 10px; text-align:center;">
-                <button onclick="removeWposItem(${idx})" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#ef4444; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.8rem; transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseleave="this.style.background='rgba(239,68,68,0.15)'">✕</button>
+            <td style="padding:10px 8px;text-align:right;font-size:0.82rem;color:rgba(255,255,255,0.5);">R$ ${Number(it.unit_price).toFixed(2)}</td>
+            <td style="padding:10px 8px;text-align:right;color:#10b981;font-weight:700;font-size:0.95rem;">R$ ${(Number(it.unit_price) * it.quantity).toFixed(2)}</td>
+            <td style="padding:10px 8px;text-align:center;">
+                <button onclick="removeWposItem(${idx})" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:0.78rem;" onmouseover="this.style.background='rgba(239,68,68,0.25)'" onmouseleave="this.style.background='rgba(239,68,68,0.1)'">✕</button>
             </td>
         </tr>`).join('');
     }
 
-    const total = wposItems.reduce((acc, it) => acc + (it.unit_price * it.quantity), 0);
+    const total = wposItems.reduce((acc, it) => acc + (Number(it.unit_price) * it.quantity), 0);
     const ts = wposTotalStr();
-    if (ts) ts.textContent = `R$ ${total.toFixed(2)}`;
+    if (ts) ts.textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
 }
 
-
-
-document.addEventListener('DOMContentLoaded', () => {
-    const btnSubmitWpos = document.getElementById('btn-submit-wpos');
-    if (btnSubmitWpos) {
-        btnSubmitWpos.onclick = async () => {
-            if (wposItems.length === 0) return alert('O carrinho de atacado está vazio!');
-
-            const customerId = wposCustomerSelect()?.value;
-            const total = wposItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
-            
-            try {
-                btnSubmitWpos.disabled = true;
-                btnSubmitWpos.innerText = 'Processando...';
-
-                const res = await fetch(`${API_URL}/wholesale/orders`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('token') },
-                    body: JSON.stringify({
-                        customer_id: customerId || null,
-                        items: wposItems,
-                        total_amount: total
-                    })
-                });
-
-                if (res.ok) {
-                    const savedOrderRes = await res.json();
-                    
-                    printWholesaleReceipt(savedOrderRes.order, wposItems, customerId);
-
-                    wposItems = [];
-                    renderWposCart();
-                    loadCatalog(); // Refresh catalog stock locally
-                } else {
-                    const errResponse = await res.json();
-                    alert('Erro ao finalizar venda: ' + errResponse.message);
-                }
-            } catch (err) { 
-                console.error(err); 
-                alert('Erro de conexão ao finalizar!');
-            } finally {
-                btnSubmitWpos.disabled = false;
-                btnSubmitWpos.innerText = '✅ Finalizar Venda e Imprimir Cupom Não-Fiscal';
-            }
-        };
+function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
+    let parea = document.getElementById('wholesale-print-staging');
+    if (!parea) {
+        parea = document.createElement('div');
+        parea.id = 'wholesale-print-staging';
+        parea.className = 'print-only';
+        document.body.appendChild(parea);
     }
-});
+
+    let customerName = 'Consumidor Final';
+    if (customerIdSelected) {
+        const c = customers.find(c => c.id == parseInt(customerIdSelected));
+        if (c) customerName = c.name;
+    }
+
+    const orderNo = orderData?.id || '---';
+    const total = orderData?.total_amount ?? itemsUsed.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
+
+    const rows = itemsUsed.map(i => `
+        <tr>
+            <td style="padding:4px 2px;border-bottom:1px dashed #ccc;">${i.name}<br><span style="font-size:9px;color:#555;">${i.color} | ${i.size} — SKU: ${i.sku}</span></td>
+            <td style="padding:4px 2px;border-bottom:1px dashed #ccc;text-align:center;">${i.quantity}</td>
+            <td style="padding:4px 2px;border-bottom:1px dashed #ccc;text-align:right;">R$ ${Number(i.unit_price).toFixed(2)}</td>
+            <td style="padding:4px 2px;border-bottom:1px dashed #ccc;text-align:right;font-weight:bold;">R$ ${(Number(i.unit_price) * i.quantity).toFixed(2)}</td>
+        </tr>`).join('');
+
+    parea.innerHTML = `
+        <div style="width:100%;max-width:320px;margin:0 auto;font-family:'Courier New',monospace;font-size:11px;color:#000;">
+            <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px;">
+                <strong style="font-size:15px;display:block;margin-bottom:3px;">PROFITCALC ERP</strong>
+                <span style="font-size:10px;">CUPOM NÃO FISCAL — VENDA ATACADO</span><br>
+                <span>Nº ${String(orderNo).padStart(6,'0')} — ${new Date().toLocaleString('pt-BR')}</span>
+            </div>
+            <div style="margin-bottom:10px;border-bottom:1px dashed #000;padding-bottom:8px;">
+                <strong>Cliente:</strong> ${customerName}
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+                <thead>
+                    <tr>
+                        <th style="border-bottom:1px solid #000;padding-bottom:3px;font-size:10px;">Descrição</th>
+                        <th style="border-bottom:1px solid #000;padding-bottom:3px;text-align:center;font-size:10px;">Qtd</th>
+                        <th style="border-bottom:1px solid #000;padding-bottom:3px;text-align:right;font-size:10px;">Unit.</th>
+                        <th style="border-bottom:1px solid #000;padding-bottom:3px;text-align:right;font-size:10px;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="text-align:right;border-top:2px solid #000;padding-top:6px;font-weight:bold;font-size:14px;">
+                TOTAL: R$ ${Number(total).toFixed(2)}
+            </div>
+            <div style="text-align:center;margin-top:18px;font-size:10px;border-top:1px dashed #000;padding-top:10px;">
+                Obrigado pela preferência!<br>Documento sem valor fiscal.
+            </div>
+        </div>`;
+
+    setTimeout(() => { window.print(); parea.innerHTML = ''; }, 300);
+}
+
+function processWposInput(query) {
+    const lowerQuery = query.toLowerCase();
+    let productFound = null;
+    let variationFound = null;
+
+    for (const p of catalog) {
+        const matchedVar = p.variations?.find(v => v.sku?.toLowerCase() === lowerQuery || v.id.toString() === lowerQuery);
+        if (matchedVar) { productFound = p; variationFound = matchedVar; break; }
+    }
+
+    if (!variationFound) return;
+
+    const wholesalePrice = productFound.prices?.find(pr => pr.type === 'wholesale' || pr.label?.toLowerCase().includes('atacado'))?.value || productFound.base_cost || 0;
+
+    const existing = wposItems.find(i => i.variation_id === variationFound.id);
+    if (existing) {
+        existing.quantity++;
+    } else {
+        wposItems.push({
+            product_id: productFound.id,
+            variation_id: variationFound.id,
+            name: productFound.name,
+            color: variationFound.color || '-',
+            size: variationFound.size || '-',
+            unit_price: wholesalePrice,
+            quantity: 1
+        });
+    }
+    renderWposCart();
+}
+
+window.removeWposItem = (idx) => { wposItems.splice(idx, 1); renderWposCart(); };
+
+function renderWposCart() {
+    const tbd = wposCartBody();
+    if (!tbd) return;
+    tbd.innerHTML = wposItems.map((it, idx) => `
+        <tr>
+            <td>${it.name} (${it.color}/${it.size})</td>
+            <td>${it.quantity}</td>
+            <td>R$ ${it.unit_price.toFixed(2)}</td>
+            <td>R$ ${(it.unit_price * it.quantity).toFixed(2)}</td>
+            <td><button onclick="removeWposItem(${idx})">✕</button></td>
+        </tr>`).join('');
+    const total = wposItems.reduce((acc, it) => acc + (it.unit_price * it.quantity), 0);
+    if (wposTotalStr()) wposTotalStr().textContent = `R$ ${total.toFixed(2)}`;
+}
 
 function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
     let parea = document.getElementById('wholesale-print-staging'); 
@@ -2377,63 +2433,19 @@ function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
         document.body.appendChild(parea);
     }
     
-    let customerName = 'Consumidor Final';
-    if(customerIdSelected) {
-        const foundC = customers.find(c => c.id == parseInt(customerIdSelected));
-        if(foundC) customerName = foundC.name;
-    }
-
-    const orderNo = orderData?.id || 'NOVO';
-    const total = orderData?.total_amount || 0;
-    const itemsListHtml = itemsUsed.map(i => `
-        <tr>
-            <td style="padding:3px 0; border-bottom:1px dashed #ccc;">${i.name} (${i.size})</td>
-            <td style="padding:3px 0; border-bottom:1px dashed #ccc; text-align:center;">${i.quantity}</td>
-            <td style="padding:3px 0; border-bottom:1px dashed #ccc; text-align:right;">R$ ${(i.unit_price * i.quantity).toFixed(2)}</td>
-        </tr>
-    `).join('');
-
     const html = `
-        <div style="width: 100%; font-family: 'Courier New', monospace; font-size: 11px;">
-            <div style="text-align: center; border-bottom: 1px dashed black; padding-bottom: 10px; margin-bottom: 10px;">
-                <strong style="font-size: 14px;">PROFITCALC ERP</strong><br>
-                <span>CUPOM NÃO FISCAL - ATACADO</span><br>
-                <span>Venda: #${String(orderNo).padStart(6, '0')}</span><br>
-                <span>Data: ${new Date().toLocaleString('pt-BR')}</span>
-            </div>
-            
-            <div style="margin-bottom: 10px; border-bottom: 1px dashed black; padding-bottom: 10px;">
-                <span><strong>Cliente:</strong> ${customerName}</span>
-            </div>
-
-            <table style="width: 100%; text-align: left; border-collapse: collapse; margin-bottom: 10px;">
-                <thead>
-                    <tr>
-                        <th style="border-bottom: 1px solid black; padding-bottom:3px;">Desc</th>
-                        <th style="border-bottom: 1px solid black; padding-bottom:3px; text-align:center;">Qtd</th>
-                        <th style="border-bottom: 1px solid black; padding-bottom:3px; text-align:right;">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${itemsListHtml}
-                </tbody>
+        <div style="font-family: monospace; font-size: 12px;">
+            <h3>RECIBO ATACADO</h3>
+            <p>Data: ${new Date().toLocaleString()}</p>
+            <table style="width:100%">
+                ${itemsUsed.map(i => `<tr><td>${i.name}</td><td>${i.quantity}</td><td>R$ ${(i.unit_price * i.quantity).toFixed(2)}</td></tr>`).join('')}
             </table>
-
-            <div style="text-align: right; border-top: 1px solid black; padding-top: 5px; font-weight: bold; font-size: 14px;">
-                Total Pago: R$ ${Number(total).toFixed(2)}
-            </div>
-            
-            <div style="text-align: center; margin-top: 20px; font-size: 10px;">
-                Obrigado pela preferência!<br>
-                -------------------------<br>
-                www.seu-dominio.com.br
-            </div>
+            <p><strong>TOTAL: R$ ${orderData.total_amount.toFixed(2)}</strong></p>
         </div>
     `;
 
     parea.innerHTML = html;
     
-    // Pequeno delay para garantir a renderização no DOM antes de chamar print nativo
     setTimeout(() => {
         window.print();
         parea.innerHTML = '';
@@ -2552,132 +2564,8 @@ window.loadMarketplaces = async () => {
     } catch (err) { console.error('Erro ao carregar marketplaces:', err); }
 };
 
-window.loadWholesaleProducts = async () => {
-    if (catalog.length === 0) await loadCatalog();
-    renderCartProducts();
-};
 
-function renderCartProducts() {
-    if (!cartProductGrid) return;
-    const term = document.getElementById('cart-search-input')?.value.toLowerCase() || '';
-    
-    // Sort catalog by name
-    const filtered = catalog.filter(p => p.name.toLowerCase().includes(term));
-    
-    cartProductGrid.innerHTML = filtered.map(p => {
-        // Encontrar preço de atacado: priorizar tipo='wholesale' ou etiqueta 'Atacado'
-        const wholesalePriceObj = (p.prices || []).find(pr => 
-            pr.type === 'wholesale' || 
-            (pr.label && pr.label.toLowerCase().includes('atacado'))
-        );
-        const price = wholesalePriceObj ? wholesalePriceObj.value : (p.prices?.[0]?.value || 0);
 
-        return `
-        <div class="glass-card product-card">
-            ${p.image_data ? `<img src="${p.image_data}" class="card-img" alt="${p.name}">` : '<div class="card-img" style="background:rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center; color:#555;">📷</div>'}
-            <div class="card-content">
-                <span class="card-category">Venda Direta</span>
-                <h3 class="card-title">${p.name}</h3>
-                <p class="card-price" style="color: #25d366; font-weight:800; font-size:1.3rem;">R$ ${price.toFixed(2)} <span style="font-size:0.7rem; opacity:0.7; font-weight:400;">(Atacado)</span></p>
-                <div style="margin-top: 1rem;">
-                    <button class="btn-primary" onclick="openWholesaleItemSelection(${p.id})">Selecionar Grade</button>
-                </div>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-// Bind search input
-document.getElementById('cart-search-input')?.addEventListener('input', renderCartProducts);
-
-window.loadMarketplacesForPOS = async () => {
-    if (!posMarketplaceSelect) return;
-    try {
-        const res = await fetch(`${API_URL}/marketplaces`, {
-            headers: { 'Authorization': localStorage.getItem('token') }
-        });
-        if (res.ok) {
-            const list = await res.json();
-            const currentVal = posMarketplaceSelect.value;
-            posMarketplaceSelect.innerHTML = '<option value="">-- Escolha o Marketplace --</option>' + 
-                list.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-            if (currentVal) posMarketplaceSelect.value = currentVal;
-        }
-    } catch (err) { console.error('Erro mkt pos', err); }
-};
-
-// Wholesale Cart Logic
-function renderCartProducts() {
-    if (!cartProductGrid) return;
-    // Get search term
-    const term = document.getElementById('cart-search-input')?.value.toLowerCase() || '';
-    
-    const filtered = catalog.filter(p => p.name.toLowerCase().includes(term));
-    
-    cartProductGrid.innerHTML = filtered.map(p => {
-        // Encontrar preço de atacado
-        // Priorizar tipo 'wholesale' ou label 'Atacado'
-        const wholesalePriceObj = p.prices?.find(pr => 
-            pr.type === 'wholesale' || 
-            (pr.label && pr.label.toLowerCase() === 'atacado') || 
-            (pr.label && pr.label.toLowerCase() === 'wholesale')
-        );
-        const price = wholesalePriceObj ? wholesalePriceObj.value : (p.prices?.[0]?.value || 0);
-
-        return `
-        <div class="glass-card product-card">
-            ${p.image_data ? `<img src="${p.image_data}" class="card-img">` : '<div class="card-img" style="background:#333; display:flex; align-items:center; justify-content:center; color:#555;">📷</div>'}
-            <div class="card-content">
-                <h3 class="card-title">${p.name}</h3>
-                <p class="card-price" style="color:var(--primary-light); font-weight:700;">R$ ${price.toFixed(2)} <small style="font-weight:400; opacity:0.7;">(Atacado)</small></p>
-                <div style="margin-top: 15px;">
-                    <button class="btn-primary" onclick="openWholesaleItemSelection(${p.id})">Selecionar Variações</button>
-                </div>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-// --- Price Management View ---
-async function loadPricesView() {
-    if (!pricesTableBody) return;
-    if (catalog.length === 0) await loadCatalog();
-
-    pricesTableBody.innerHTML = catalog.map(p => {
-        const pPrices = p.prices || [];
-        
-        // Group prices by label for easy viewing
-        const pricesHtml = pPrices.map(pr => `
-            <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 6px;">
-                <span style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; min-width: 80px;">${pr.label}:</span>
-                <input type="number" step="0.01" value="${pr.value}" 
-                    style="width: 80px; background: none; border: none; border-bottom: 1px solid #4ade80; color: white; padding: 2px; font-weight: 700;"
-                    onchange="updatePricePoint(${p.id}, ${pr.id}, this.value)">
-                <span style="font-size: 0.7rem; color: #4ade80;">(Lucro: R$ ${(pr.profit || 0).toFixed(2)})</span>
-            </div>
-        `).join('') || '<span style="color: #64748b; font-style: italic;">Nenhum preço salvo</span>';
-
-        return `
-            <tr>
-                <td>
-                    <div style="font-weight: 600;">${p.name}</div>
-                    <div style="font-size: 0.75rem; opacity: 0.6;">ID: ${p.id}</div>
-                </td>
-                <td>R$ ${(p.base_cost || 0).toFixed(2)}</td>
-                <td>
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        ${pricesHtml}
-                    </div>
-                </td>
-                <td>
-                    <button class="btn-text" onclick="switchSubView('calc'); document.getElementById('p-calc-catalog-id').value = ${p.id};" style="color: #3b82f6;">
-                        ➕ Calcular Novo
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
 
 window.updatePricePoint = async (productId, priceId, newValue) => {
     try {
