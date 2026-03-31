@@ -248,6 +248,32 @@ async function seed() {
 
 
 // =====================
+// MARKETPLACE PRESETS (mirrors client-side presets for server-side auto-reprice)
+// =====================
+const MARKETPLACE_PRESETS_SERVER = [
+  { match: 'tiktok', taxP: 8,  taxPFixed: 6,  taxF: 4, costs: 0 },
+  { match: 'shein',  taxP: 8,  taxPFixed: 20, taxF: 4, costs: 0 },
+  { match: 'shopee', taxP: 8,  taxPFixed: 20, taxF: 4, costs: 2 }
+];
+
+const AUTO_PRICE_MARGIN_SERVER = 0.325;
+
+function getStorePresetServer(label) {
+  const lower = (label || '').toLowerCase();
+  const found = MARKETPLACE_PRESETS_SERVER.find(p => lower.includes(p.match));
+  if (found) return { taxP: found.taxP, taxPFixed: found.taxPFixed, taxF: found.taxF, costs: found.costs };
+  return { taxP: 0, taxPFixed: 0, taxF: 0, costs: 0 };
+}
+
+function calcIdealPriceServer(baseCost, preset, margin = AUTO_PRICE_MARGIN_SERVER) {
+  const taxPercent = (preset.taxP + preset.taxPFixed) / 100;
+  const divisor = 1 - taxPercent - margin;
+  if (divisor <= 0) return null;
+  const sPrice = (baseCost + preset.taxF + preset.costs) / divisor;
+  return Math.ceil(sPrice * 100) / 100; // round up to cent
+}
+
+// =====================
 // AUTH MIDDLEWARE
 // =====================
 const authenticateToken = (req, res, next) => {
@@ -409,8 +435,34 @@ app.put('/api/catalog/:id', authenticateToken, async (req, res) => {
       }
     }
 
+    // Auto-reprice: if base_cost changed, recalculate all existing prices to maintain ~32.5% margin
+    const newCost = Number(base_cost) || 0;
+    if (newCost > 0) {
+      const existingPricesRes = await client.query(
+        'SELECT * FROM product_prices WHERE product_id = $1',
+        [productId]
+      );
+      const existingPrices = existingPricesRes.rows;
+
+      for (const ep of existingPrices) {
+        const preset = getStorePresetServer(ep.label);
+        const newSalePrice = calcIdealPriceServer(newCost, preset);
+        if (!newSalePrice) continue;
+
+        const taxAmount = (newSalePrice * (preset.taxP + preset.taxPFixed)) / 100;
+        const newTotalCost = newCost + taxAmount + preset.taxF + preset.costs;
+        const newProfit = newSalePrice - newTotalCost;
+
+        await client.query(
+          'UPDATE product_prices SET value=$1, cost=$2, profit=$3 WHERE id=$4',
+          [newSalePrice, newTotalCost, newProfit, ep.id]
+        );
+      }
+    }
+
     await client.query('COMMIT');
-    res.json({ message: 'Produto atualizado com sucesso' });
+    const repriced = (Number(base_cost) > 0) ? ' Preços recalculados automaticamente.' : '';
+    res.json({ message: 'Produto atualizado com sucesso.' + repriced });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
