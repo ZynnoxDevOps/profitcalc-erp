@@ -2068,6 +2068,7 @@ window.deleteCustomer = async (id) => {
 
 // Wholesale POS Logic
 let wposItems = [];
+let wposScanTimer = null;
 
 // DOM Access
 const wposBarcodeBox = () => document.getElementById('wpos-barcode-input');
@@ -2075,6 +2076,7 @@ const wposCustomerSelect = () => document.getElementById('wpos-customer-select')
 const wposCartBody = () => document.getElementById('wpos-cart-body');
 const wposTotalStr = () => document.getElementById('wpos-total');
 const wposFeedback = () => document.getElementById('wpos-feedback');
+const wposStatusLight = () => document.getElementById('wpos-status-light');
 
 // Setup Wholesale POS view
 window.loadWholesaleProducts = async () => {
@@ -2082,20 +2084,38 @@ window.loadWholesaleProducts = async () => {
     if (customers.length === 0) await loadCustomers();
 
     const cs = wposCustomerSelect();
-    if(cs) {
+    if (cs) {
         cs.innerHTML = '<option value="">Consumidor Final</option>' + 
             customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     }
 
     const input = wposBarcodeBox();
-    if(input) {
+    if (input) {
         input.value = '';
         input.focus();
-        // Allow adding by ENTER
-        input.onkeypress = (e) => {
-            if (e.key === 'Enter') {
-                processWposInput(input.value.trim());
+
+        // Scanner envia dados rápido e termina com Enter OU para de digitar
+        input.oninput = () => {
+            clearTimeout(wposScanTimer);
+            const val = input.value.trim();
+            if (!val) return;
+            // Auto-dispara após 300ms sem nova digitação (comportamento típico de scanner)
+            wposScanTimer = setTimeout(() => {
+                processWposInput(val);
                 input.value = '';
+                input.focus();
+            }, 300);
+        };
+
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                clearTimeout(wposScanTimer);
+                const val = input.value.trim();
+                if (val) {
+                    processWposInput(val);
+                    input.value = '';
+                    input.focus();
+                }
             }
         };
     }
@@ -2104,7 +2124,7 @@ window.loadWholesaleProducts = async () => {
 };
 
 function processWposInput(query) {
-    if(!query || query.trim() === '') return;
+    if (!query || query.trim() === '') return;
     const lowerQuery = query.toLowerCase().trim();
 
     let variationFound = null;
@@ -2112,13 +2132,14 @@ function processWposInput(query) {
 
     for (const p of catalog) {
         if (!p.variations) continue;
-        const matchedVar = p.variations.find(v => v.sku?.toLowerCase() === lowerQuery || v.id.toString() === lowerQuery);
+        const matchedVar = p.variations.find(v =>
+            v.sku?.toLowerCase() === lowerQuery || v.id.toString() === lowerQuery
+        );
         if (matchedVar) {
             productFound = p;
             variationFound = matchedVar;
             break;
         }
-        
         if (p.name.toLowerCase() === lowerQuery && p.variations.length > 0) {
             productFound = p;
             variationFound = p.variations[0];
@@ -2127,20 +2148,34 @@ function processWposInput(query) {
     }
 
     if (!variationFound) {
-        showWposFeedback(`Produto não encontrado para: ${query}`, 'error');
+        showWposFeedback(`❌ Produto não encontrado: <strong>${query}</strong>`, 'error');
+        setWposLight('error');
         return;
     }
 
+    // Busca preço atacado: type='wholesale' OU label='Atacado' (salvo pela Calculadora)
     let unitPrice = productFound.base_cost || 0;
-    const wpObj = productFound.prices?.find(pr => pr.type === 'wholesale');
-    if (wpObj && wpObj.value) {
-        unitPrice = Number(wpObj.value);
+    let priceLabel = 'Custo Base';
+    
+    if (productFound.prices && productFound.prices.length > 0) {
+        const wholesalePrice =
+            productFound.prices.find(pr => pr.type === 'wholesale') ||
+            productFound.prices.find(pr => pr.label?.toLowerCase() === 'atacado') ||
+            productFound.prices.find(pr => pr.type === 'wholesale' || pr.label?.toLowerCase().includes('atacad'));
+        
+        if (wholesalePrice && wholesalePrice.value > 0) {
+            unitPrice = Number(wholesalePrice.value);
+            priceLabel = wholesalePrice.label || 'Atacado';
+        }
     }
 
+    // Adiciona ou incrementa no carrinho
     const existingIndex = wposItems.findIndex(i => i.variation_id === variationFound.id);
-    
+    let newQty = 1;
+
     if (existingIndex >= 0) {
         wposItems[existingIndex].quantity++;
+        newQty = wposItems[existingIndex].quantity;
     } else {
         wposItems.push({
             product_id: productFound.id,
@@ -2150,50 +2185,107 @@ function processWposInput(query) {
             size: variationFound.size || '-',
             sku: variationFound.sku || '-',
             unit_price: unitPrice,
+            price_label: priceLabel,
             quantity: 1
         });
     }
 
-    showWposFeedback(`✅ Adicionado: ${productFound.name}`, 'success');
+    setWposLight('success');
+    showWposFeedback(`
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-size:1.5rem;">✅</span>
+            <div>
+                <div style="font-weight:700; font-size:1rem;">${productFound.name}</div>
+                <div style="font-size:0.82rem; color:rgba(255,255,255,0.7);">
+                    ${variationFound.color} | ${variationFound.size} &nbsp;·&nbsp;
+                    <span style="color:#fbbf24; font-weight:700;">R$ ${unitPrice.toFixed(2)}</span>
+                    <span style="color:rgba(255,255,255,0.4); font-size:0.75rem;"> (${priceLabel})</span>
+                </div>
+            </div>
+            <span style="margin-left:auto; font-size:1.3rem; background:rgba(16,185,129,0.2); border:1px solid #10b981; border-radius:8px; padding:4px 12px; font-weight:700; color:#10b981;">
+                × ${newQty}
+            </span>
+        </div>
+    `, 'success');
+
     renderWposCart();
+}
+
+function setWposLight(status) {
+    const light = wposStatusLight();
+    if (!light) return;
+    if (status === 'success') {
+        light.style.background = '#10b981';
+        light.style.boxShadow = '0 0 20px #10b981';
+    } else if (status === 'error') {
+        light.style.background = '#ef4444';
+        light.style.boxShadow = '0 0 20px #ef4444';
+    } else {
+        light.style.background = '#fbbf24';
+        light.style.boxShadow = '0 0 15px #fbbf24';
+    }
+    setTimeout(() => {
+        if (light) { light.style.background = '#fbbf24'; light.style.boxShadow = '0 0 15px #fbbf24'; }
+    }, 2000);
 }
 
 function showWposFeedback(msg, type) {
     const fb = wposFeedback();
-    if(!fb) return;
-    fb.innerHTML = `<div style="padding:10px; border-radius:8px; background: rgba(${type === 'error' ? '239, 68, 68' : '16, 185, 129'}, 0.2); border: 1px solid ${type === 'error' ? '#ef4444' : '#10b981'}; color: white; text-align: center;">${msg}</div>`;
-    setTimeout(() => fb.innerHTML = '', 3000);
+    if (!fb) return;
+    fb.innerHTML = `<div style="padding:12px 16px; border-radius:10px; background:rgba(${type === 'error' ? '239,68,68' : '16,185,129'},0.15); border:1px solid ${type === 'error' ? '#ef4444' : '#10b981'}; color:white; animation: fadeIn 0.2s ease;">${msg}</div>`;
+    if (type !== 'error') setTimeout(() => { if(fb) fb.innerHTML = ''; }, 3500);
 }
 
 window.removeWposItem = (idx) => {
     wposItems.splice(idx, 1);
     renderWposCart();
+    wposBarcodeBox()?.focus();
+};
+
+window.changeWposQty = (idx, delta) => {
+    wposItems[idx].quantity += delta;
+    if (wposItems[idx].quantity <= 0) wposItems.splice(idx, 1);
+    renderWposCart();
+    wposBarcodeBox()?.focus();
 };
 
 function renderWposCart() {
     const tbd = wposCartBody();
-    if(!tbd) return;
-    tbd.innerHTML = wposItems.map((it, idx) => `
-        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseleave="this.style.background='transparent'">
-            <td style="padding: 12px; font-weight:600;">
-                ${it.name}<br>
-                <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">${it.sku} - ${it.color} | ${it.size}</span>
+    if (!tbd) return;
+
+    if (wposItems.length === 0) {
+        tbd.innerHTML = `<tr><td colspan="5" style="padding:2rem; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+            Nenhum item ainda. Bipe um produto para começar. 🛒
+        </td></tr>`;
+    } else {
+        tbd.innerHTML = wposItems.map((it, idx) => `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+            <td style="padding:12px 10px;">
+                <div style="font-weight:700; font-size:0.95rem;">${it.name}</div>
+                <div style="font-size:0.75rem; color:var(--text-muted);">${it.sku} &nbsp;·&nbsp; ${it.color} | ${it.size}</div>
+                <div style="font-size:0.7rem; color:#fbbf24; margin-top:2px;">${it.price_label || 'Atacado'}</div>
             </td>
-            <td style="padding: 12px; text-align:center;">
-                <span style="font-size: 1.1rem; font-weight:bold;">${it.quantity}</span>
+            <td style="padding:12px 10px; text-align:center;">
+                <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <button onclick="changeWposQty(${idx}, -1)" style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:white; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;">−</button>
+                    <span style="font-size:1.1rem; font-weight:700; min-width:24px; text-align:center;">${it.quantity}</span>
+                    <button onclick="changeWposQty(${idx}, +1)" style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:white; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;">+</button>
+                </div>
             </td>
-            <td style="padding: 12px; text-align:right;">R$ ${it.unit_price.toFixed(2)}</td>
-            <td style="padding: 12px; text-align:right; color:#10b981; font-weight:bold;">R$ ${(it.unit_price * it.quantity).toFixed(2)}</td>
-            <td style="padding: 12px; text-align:center;">
-                <button class="btn-delete" style="font-weight:bold; font-size:1.1rem;" onclick="removeWposItem(${idx})">&times; Remover</button>
+            <td style="padding:12px 10px; text-align:right; font-size:0.95rem;">R$ ${it.unit_price.toFixed(2)}</td>
+            <td style="padding:12px 10px; text-align:right; color:#10b981; font-weight:700; font-size:1rem;">R$ ${(it.unit_price * it.quantity).toFixed(2)}</td>
+            <td style="padding:12px 10px; text-align:center;">
+                <button onclick="removeWposItem(${idx})" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#ef4444; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.8rem; transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseleave="this.style.background='rgba(239,68,68,0.15)'">✕</button>
             </td>
-        </tr>
-    `).join('');
+        </tr>`).join('');
+    }
 
     const total = wposItems.reduce((acc, it) => acc + (it.unit_price * it.quantity), 0);
     const ts = wposTotalStr();
-    if(ts) ts.textContent = `R$ ${total.toFixed(2)}`;
+    if (ts) ts.textContent = `R$ ${total.toFixed(2)}`;
 }
+
+
 
 document.addEventListener('DOMContentLoaded', () => {
     const btnSubmitWpos = document.getElementById('btn-submit-wpos');
