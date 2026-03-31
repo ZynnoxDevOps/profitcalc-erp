@@ -9,10 +9,35 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = 'super_secret_profit_key';
 
+// Diagnóstico de boot
+console.log('🚀 Iniciando ProfitCalc ERP...');
+console.log('📦 NODE_ENV:', process.env.NODE_ENV || 'development');
+console.log('🔌 DATABASE_URL configurada:', !!process.env.DATABASE_URL);
+console.log('🌐 PORT:', PORT);
+
+if (!process.env.DATABASE_URL) {
+  console.error('❌ ERRO CRÍTICO: DATABASE_URL não está definida!');
+  console.error('   Configure a variável DATABASE_URL no Railway com a URL do PostgreSQL.');
+  process.exit(1);
+}
+
 // PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 10
+});
+
+// Health check endpoint (sem autenticação)
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ status: 'error', db: 'disconnected', error: err.message });
+  }
 });
 
 // =====================
