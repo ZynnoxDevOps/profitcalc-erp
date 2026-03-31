@@ -993,58 +993,55 @@ tr:hover td {
 .label-price { font-weight: bold; margin-top: 4px; }
 
 @media print {
-    /* Oculta tudo por padrão */
-    body * { visibility: hidden; }
+    /* Oculta toda a interface */
+    body * { visibility: hidden !important; }
     body > * { display: none !important; }
 
-    /* === CUPOM DE ATACADO (wholesale-print-staging) === */
-    body:has(#wholesale-print-staging:not(:empty)) #wholesale-print-staging {
+    /* === CUPOM DE ATACADO === */
+    #wholesale-print-staging {
         display: block !important;
-        visibility: visible;
-        position: fixed;
-        left: 0;
-        top: 0;
-        width: 80mm;
-        padding: 5mm;
+        visibility: visible !important;
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 80mm !important;
+        padding: 3mm !important;
         background: white !important;
         color: black !important;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 10pt;
-        z-index: 99999;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 10pt !important;
+        z-index: 99999 !important;
     }
-    body:has(#wholesale-print-staging:not(:empty)) #wholesale-print-staging * {
-        visibility: visible;
+    #wholesale-print-staging * {
+        visibility: visible !important;
         color: black !important;
+        display: revert !important;
     }
 
-    /* === ETIQUETAS (print-staging-area) === */
-    body:has(#print-staging-area:not(:empty)) #print-staging-area {
+    /* === ETIQUETAS === */
+    #print-staging-area {
         display: grid !important;
-        visibility: visible;
-        position: fixed;
-        left: 0;
-        top: 0;
-        grid-template-columns: 50mm 50mm;
-        gap: 0;
-        width: 100mm;
-        padding: 0;
-        margin: 0;
+        visibility: visible !important;
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        grid-template-columns: 50mm 50mm !important;
+        gap: 0 !important;
+        width: 100mm !important;
+        padding: 0 !important;
+        margin: 0 !important;
         background: white !important;
-        justify-content: flex-start;
-        align-content: flex-start;
-        z-index: 99999;
+        z-index: 99999 !important;
     }
-    body:has(#print-staging-area:not(:empty)) #print-staging-area * {
-        visibility: visible;
-    }
-    body:has(#print-staging-area:not(:empty)) .label-print-item {
+    #print-staging-area * { visibility: visible !important; }
+    .label-print-item {
         display: flex !important;
         width: 50mm !important;
         height: 25mm !important;
         border: 0.3mm solid #ccc !important;
-        overflow: hidden;
+        overflow: hidden !important;
         margin: 0 !important;
-        box-sizing: border-box;
+        box-sizing: border-box !important;
     }
 
     .print-header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
@@ -1053,11 +1050,10 @@ tr:hover td {
     .print-footer { border-top: 1px dashed #000; padding-top: 5px; text-align: right; }
     .no-print { display: none !important; }
 
-    @page {
-        size: 80mm auto;
-        margin: 0;
-    }
+    @page { size: 80mm auto; margin: 0; }
 }
+
+
 
 @keyframes pulseSuccess {
     0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }

@@ -2435,80 +2435,62 @@ function printWholesaleReceipt(orderData, itemsUsed, customerIdSelected) {
     const total    = orderData?.total_amount ?? itemsUsed.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
     const dataHora = new Date().toLocaleString('pt-BR');
 
-    // Monta linhas da tabela
     const rows = itemsUsed.map(i =>
         '<tr>' +
-        '<td>' + i.name + ' (' + (i.color||'-') + '/' + (i.size||'-') + ')<br>' +
-        '<small>SKU: ' + (i.sku||'-') + '</small></td>' +
-        '<td align="center">' + i.quantity + '</td>' +
-        '<td align="right">R$' + Number(i.unit_price).toFixed(2) + '</td>' +
-        '<td align="right"><b>R$' + (Number(i.unit_price) * i.quantity).toFixed(2) + '</b></td>' +
+        '<td style="padding:2px 0;border-bottom:1px dashed #aaa;word-break:break-word;">' +
+            i.name + '<br>' +
+            '<span style="font-size:8pt;color:#444;">' + (i.color||'-') + ' | ' + (i.size||'-') + ' &mdash; SKU:' + (i.sku||'-') + '</span>' +
+        '</td>' +
+        '<td style="padding:2px 0;border-bottom:1px dashed #aaa;text-align:center;">' + i.quantity + '</td>' +
+        '<td style="padding:2px 0;border-bottom:1px dashed #aaa;text-align:right;">R$' + Number(i.unit_price).toFixed(2) + '</td>' +
+        '<td style="padding:2px 0;border-bottom:1px dashed #aaa;text-align:right;font-weight:bold;">R$' + (Number(i.unit_price) * i.quantity).toFixed(2) + '</td>' +
         '</tr>'
     ).join('');
 
-    // HTML do cupom — otimizado para Epson 80mm
-    const conteudo =
-        '<!DOCTYPE html>' +
-        '<html><head><meta charset="UTF-8">' +
-        '<style>' +
-        '  * { margin:0; padding:0; box-sizing:border-box; }' +
-        '  body { font-family:"Courier New",Courier,monospace; font-size:11pt; color:#000; background:#fff; width:72mm; }' +
-        '  table { width:100%; border-collapse:collapse; font-size:9pt; }' +
-        '  td, th { padding:2px 1px; vertical-align:top; }' +
-        '  th { border-bottom:1px solid #000; text-align:left; font-size:8pt; }' +
-        '  .center { text-align:center; }' +
-        '  .right { text-align:right; }' +
-        '  .sep { border-top:1px dashed #000; margin:6px 0; }' +
-        '  .sep2 { border-top:2px solid #000; margin:6px 0; }' +
-        '  .total { font-size:13pt; font-weight:bold; text-align:right; padding-top:4px; }' +
-        '  .rodape { text-align:center; font-size:8pt; padding-top:6px; }' +
-        '  @page { size:80mm auto; margin:2mm; }' +
-        '</style>' +
-        '</head><body>' +
-        '<div class="center"><b style="font-size:14pt;">PROFITCALC ERP</b><br>' +
-        '<span style="font-size:8pt;">CUPOM NAO FISCAL — ATACADO</span><br>' +
-        'N: ' + String(orderNo).padStart(6,'0') + '<br>' +
-        dataHora + '</div>' +
-        '<div class="sep"></div>' +
-        '<div><b>Cliente:</b> ' + customerName + '</div>' +
-        '<div class="sep"></div>' +
-        '<table>' +
-        '<thead><tr><th>Produto</th><th align="center">Qtd</th><th align="right">Unit</th><th align="right">Total</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody>' +
+    // Garante que o elemento existe
+    let parea = document.getElementById('wholesale-print-staging');
+    if (!parea) {
+        parea = document.createElement('div');
+        parea.id = 'wholesale-print-staging';
+        document.body.appendChild(parea);
+    }
+
+    parea.innerHTML =
+        '<div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:6px;margin-bottom:6px;">' +
+            '<b style="font-size:14pt;display:block;">PROFITCALC ERP</b>' +
+            '<span style="font-size:8pt;">CUPOM NAO FISCAL &mdash; ATACADO</span><br>' +
+            '<span style="font-size:9pt;">N: ' + String(orderNo).padStart(6,'0') + ' &mdash; ' + dataHora + '</span>' +
+        '</div>' +
+        '<div style="border-bottom:1px dashed #000;padding-bottom:4px;margin-bottom:4px;">' +
+            '<b>Cliente:</b> ' + customerName +
+        '</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:6px;">' +
+            '<thead><tr>' +
+                '<th style="text-align:left;border-bottom:1px solid #000;padding:2px 0;">Produto</th>' +
+                '<th style="text-align:center;border-bottom:1px solid #000;padding:2px 0;">Qtd</th>' +
+                '<th style="text-align:right;border-bottom:1px solid #000;padding:2px 0;">Unit</th>' +
+                '<th style="text-align:right;border-bottom:1px solid #000;padding:2px 0;">Total</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
         '</table>' +
-        '<div class="sep2"></div>' +
-        '<div class="total">TOTAL: R$ ' + Number(total).toFixed(2) + '</div>' +
-        '<div class="sep"></div>' +
-        '<div class="rodape">Obrigado pela preferencia!<br>Documento sem valor fiscal.</div>' +
-        '</body></html>';
+        '<div style="text-align:right;border-top:2px solid #000;padding-top:4px;font-size:13pt;font-weight:bold;">' +
+            'TOTAL: R$ ' + Number(total).toFixed(2) +
+        '</div>' +
+        '<div style="text-align:center;margin-top:12px;font-size:8pt;border-top:1px dashed #000;padding-top:6px;">' +
+            'Obrigado pela preferencia!<br>Documento sem valor fiscal.' +
+        '</div>';
 
-    // Remove iframe anterior se existir
-    const oldFrame = document.getElementById('_receipt_frame');
-    if (oldFrame) oldFrame.remove();
+    // Exibe o div (necessário para o browser renderizar antes do print)
+    parea.style.display = 'block';
 
-    // Cria iframe oculto
-    const iframe = document.createElement('iframe');
-    iframe.id = '_receipt_frame';
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:80mm;height:600px;border:none;visibility:hidden;';
-    document.body.appendChild(iframe);
-
-    // Escreve conteúdo no iframe
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(conteudo);
-    iframe.contentDocument.close();
-
-    // Aguarda renderização e dispara impressão
+    // Pequeno delay para garantir renderização, depois imprime
     setTimeout(function() {
-        try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        } catch(e) {
-            console.error('Erro ao imprimir:', e);
-            alert('Erro ao imprimir. Tente abrir o cupom manualmente.');
-        }
-        // Remove iframe após impressão
-        setTimeout(function() { iframe.remove(); }, 2000);
-    }, 400);
+        window.print();
+        // Esconde novamente após impressão
+        setTimeout(function() {
+            parea.style.display = 'none';
+        }, 500);
+    }, 250);
 }
 
 
