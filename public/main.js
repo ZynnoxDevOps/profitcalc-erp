@@ -343,6 +343,9 @@ function updatePreview() {
     resProfit.className = profit >= 0 ? 'profit-positive' : 'profit-negative';
 }
 
+// All marketplaces cached for filtering
+let allMarketplaces = [];
+
 async function populateCalcCatalogSelect() {
     if (!pCalcCatalogId) return;
     
@@ -356,6 +359,18 @@ async function populateCalcCatalogSelect() {
         pCalcCatalogId.appendChild(opt);
     });
 
+    // Populate edit panel product select too
+    const editProductSel = document.getElementById('edit-calc-product');
+    if (editProductSel) {
+        editProductSel.innerHTML = '<option value="">-- Selecione um Produto --</option>';
+        catalog.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            editProductSel.appendChild(opt);
+        });
+    }
+
     // 2. Marketplaces
     if (!pCalcLabel) return;
     try {
@@ -363,13 +378,226 @@ async function populateCalcCatalogSelect() {
             headers: { 'Authorization': localStorage.getItem('token') }
         });
         if (res.ok) {
-            const list = await res.json();
-            pCalcLabel.innerHTML = '<option value="">-- Selecionar Loja --</option>' +
-                '<option value="Atacado">Atacado</option>' +
-                list.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+            allMarketplaces = await res.json();
+            // Default: show all stores (no product selected yet)
+            filterStoresForCalc('');
         }
     } catch (err) { console.error('Erro ao buscar marketplaces para calculadora', err); }
 }
+
+// Filter the main calculator store dropdown based on selected product.
+// Hides stores that already have a price registered for that product.
+function filterStoresForCalc(productId) {
+    if (!pCalcLabel) return;
+    let usedLabels = [];
+    if (productId) {
+        const prod = catalog.find(p => String(p.id) === String(productId));
+        if (prod && prod.prices) {
+            usedLabels = prod.prices.map(pr => pr.label);
+        }
+    }
+    // Build options excluding already-used labels
+    const allStores = [{ name: 'Atacado' }, ...allMarketplaces];
+    const available = allStores.filter(s => !usedLabels.includes(s.name));
+    pCalcLabel.innerHTML = '<option value="">-- Selecionar Loja --</option>' +
+        available.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+
+    if (available.length === 0) {
+        pCalcLabel.innerHTML = '<option value="">✅ Todas as lojas já foram cadastradas</option>';
+    }
+}
+
+// When product changes in main calc → filter stores
+if (pCalcCatalogId) {
+    pCalcCatalogId.addEventListener('change', () => {
+        filterStoresForCalc(pCalcCatalogId.value);
+    });
+}
+
+// =====================
+// EDIT CALC PANEL
+// =====================
+function updateEditPreview() {
+    const p_cost  = parsePrice(document.getElementById('edit-p-cost')?.value);
+    const s_price = parsePrice(document.getElementById('edit-p-price')?.value);
+    const t_p     = parsePrice(document.getElementById('edit-p-tax-p')?.value);
+    const t_f_p   = parsePrice(document.getElementById('edit-p-tax-p-fixed')?.value);
+    const t_f     = parsePrice(document.getElementById('edit-p-tax-f')?.value);
+    const a_c     = parsePrice(document.getElementById('edit-p-costs')?.value);
+
+    const taxAmount = (s_price * (t_p + t_f_p)) / 100;
+    const totalCost = p_cost + taxAmount + t_f + a_c;
+    const profit = s_price - totalCost;
+
+    const editResCost = document.getElementById('edit-res-cost');
+    const editResProfit = document.getElementById('edit-res-profit');
+    if (editResCost) editResCost.textContent = `R$ ${totalCost.toFixed(2)}`;
+    if (editResProfit) {
+        editResProfit.textContent = `R$ ${profit.toFixed(2)}`;
+        editResProfit.className = profit >= 0 ? 'profit-positive' : 'profit-negative';
+    }
+}
+
+// When edit panel product changes → populate stores that HAVE price registered
+const editProductSel = document.getElementById('edit-calc-product');
+const editStoreSel = document.getElementById('edit-calc-store');
+
+if (editProductSel) {
+    editProductSel.addEventListener('change', () => {
+        const productId = editProductSel.value;
+        const editFields = document.getElementById('edit-calc-fields');
+        const editEmpty = document.getElementById('edit-calc-empty');
+
+        if (!productId) {
+            editStoreSel.innerHTML = '<option value="">-- Selecione o Produto primeiro --</option>';
+            editStoreSel.disabled = true;
+            editStoreSel.style.opacity = '0.6';
+            if (editFields) editFields.style.display = 'none';
+            if (editEmpty) editEmpty.style.display = 'block';
+            return;
+        }
+
+        const prod = catalog.find(p => String(p.id) === String(productId));
+        if (!prod || !prod.prices || prod.prices.length === 0) {
+            editStoreSel.innerHTML = '<option value="">Nenhum preço cadastrado ainda</option>';
+            editStoreSel.disabled = true;
+            editStoreSel.style.opacity = '0.6';
+            if (editFields) editFields.style.display = 'none';
+            if (editEmpty) {
+                editEmpty.style.display = 'block';
+                editEmpty.querySelector('p').textContent = 'Este produto não tem preços cadastrados ainda.';
+            }
+            return;
+        }
+
+        // Populate stores with existing prices
+        editStoreSel.innerHTML = '<option value="">-- Selecionar Loja --</option>' +
+            prod.prices.map(pr => `<option value="${pr.label}">${pr.label}</option>`).join('');
+        editStoreSel.disabled = false;
+        editStoreSel.style.opacity = '1';
+        if (editFields) editFields.style.display = 'none';
+        if (editEmpty) {
+            editEmpty.style.display = 'block';
+            editEmpty.querySelector('p').textContent = 'Selecione uma loja para carregar os dados.';
+        }
+    });
+}
+
+// When edit panel store changes → load values
+if (editStoreSel) {
+    editStoreSel.addEventListener('change', () => {
+        const productId = editProductSel?.value;
+        const storeLabel = editStoreSel.value;
+        const editFields = document.getElementById('edit-calc-fields');
+        const editEmpty = document.getElementById('edit-calc-empty');
+
+        if (!productId || !storeLabel) {
+            if (editFields) editFields.style.display = 'none';
+            if (editEmpty) editEmpty.style.display = 'block';
+            return;
+        }
+
+        const prod = catalog.find(p => String(p.id) === String(productId));
+        const priceEntry = prod?.prices?.find(pr => pr.label === storeLabel);
+
+        if (!priceEntry) {
+            if (editFields) editFields.style.display = 'none';
+            if (editEmpty) editEmpty.style.display = 'block';
+            return;
+        }
+
+        // Populate fields with stored values
+        // We store cost=totalCost, value=salePrice, profit. We can't reverse-engineer individual tax fields
+        // so we preset cost field only and leave tax fields at 0 for the user to re-enter if needed
+        const editCost = document.getElementById('edit-p-cost');
+        const editPrice = document.getElementById('edit-p-price');
+        const editTaxP = document.getElementById('edit-p-tax-p');
+        const editTaxPFixed = document.getElementById('edit-p-tax-p-fixed');
+        const editTaxF = document.getElementById('edit-p-tax-f');
+        const editCosts = document.getElementById('edit-p-costs');
+
+        // Pre-fill: price (sale value), and cost as base product cost approximation
+        if (editPrice) editPrice.value = Number(priceEntry.value || 0).toFixed(2);
+        if (editCost) editCost.value = Number(prod.base_cost || 0).toFixed(2);
+        if (editTaxP) editTaxP.value = 0;
+        if (editTaxPFixed) editTaxPFixed.value = 0;
+        if (editTaxF) editTaxF.value = 0;
+        if (editCosts) editCosts.value = 0;
+
+        if (editFields) editFields.style.display = 'block';
+        if (editEmpty) editEmpty.style.display = 'none';
+        updateEditPreview();
+    });
+}
+
+// Edit panel live preview inputs
+['edit-p-cost','edit-p-price','edit-p-tax-p','edit-p-tax-p-fixed','edit-p-tax-f','edit-p-costs'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateEditPreview);
+});
+
+// Edit panel save button
+const editSaveBtn = document.getElementById('edit-calc-save-btn');
+if (editSaveBtn) {
+    editSaveBtn.addEventListener('click', async () => {
+        const productId = editProductSel?.value;
+        const storeLabel = editStoreSel?.value;
+
+        if (!productId || !storeLabel) {
+            alert('Selecione produto e loja antes de salvar.');
+            return;
+        }
+
+        const p_cost  = parsePrice(document.getElementById('edit-p-cost')?.value);
+        const s_price = parsePrice(document.getElementById('edit-p-price')?.value);
+        const t_p     = parsePrice(document.getElementById('edit-p-tax-p')?.value);
+        const t_f_p   = parsePrice(document.getElementById('edit-p-tax-p-fixed')?.value);
+        const t_f     = parsePrice(document.getElementById('edit-p-tax-f')?.value);
+        const a_c     = parsePrice(document.getElementById('edit-p-costs')?.value);
+
+        if (s_price <= 0) { alert('Informe um preço de venda válido.'); return; }
+
+        const taxAmount = (s_price * (t_p + t_f_p)) / 100;
+        const totalCost = p_cost + taxAmount + t_f + a_c;
+        const profit = s_price - totalCost;
+
+        // Determine type from store label
+        const isAtacado = storeLabel === 'Atacado';
+        const type = isAtacado ? 'wholesale' : 'marketplace';
+
+        const token = localStorage.getItem('token');
+        try {
+            editSaveBtn.disabled = true;
+            editSaveBtn.textContent = 'Salvando...';
+            const res = await fetch(`${API_URL}/catalog/${productId}/prices`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify({ type, label: storeLabel, value: s_price, cost: totalCost, profit })
+            });
+
+            let data = {};
+            try { data = await res.json(); } catch(e) {}
+
+            if (!res.ok) throw new Error(data.message || 'Falha ao salvar.');
+
+            alert(`✅ Cálculo de "${storeLabel}" atualizado com sucesso!`);
+            await loadCatalog();
+            // Refresh store select for this product after save
+            const prod = catalog.find(p => String(p.id) === String(productId));
+            if (prod && prod.prices) {
+                editStoreSel.innerHTML = '<option value="">-- Selecionar Loja --</option>' +
+                    prod.prices.map(pr => `<option value="${pr.label}">${pr.label}</option>`).join('');
+                editStoreSel.value = storeLabel;
+            }
+        } catch (err) {
+            alert('Erro: ' + err.message);
+        } finally {
+            editSaveBtn.disabled = false;
+            editSaveBtn.innerHTML = '🔄 Atualizar Cálculo';
+        }
+    });
+}
+
 
 // Salvar / Adicionar Preço ao Catálogo via Calculadora (Fixed: Preço, Custo e Lucro)
 calcForm.onsubmit = async (e) => {
@@ -424,9 +652,15 @@ calcForm.onsubmit = async (e) => {
         }
 
         alert('Cálculo salvo com sucesso na Gestão de Preços!');
+        const savedProductId = catalogId;
         calcForm.reset();
         updatePreview();
-        if (typeof loadCatalog === 'function') loadCatalog();
+        if (typeof loadCatalog === 'function') {
+            await loadCatalog();
+            // Re-filter stores for the previously selected product so saved store disappears
+            filterStoresForCalc(savedProductId);
+            pCalcCatalogId.value = savedProductId;
+        }
     } catch (err) {
         console.error('Save Error:', err);
         alert('Erro: ' + err.message);

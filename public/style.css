@@ -514,8 +514,17 @@ body {
     gap: 2.5rem;
 }
 
+/* Two-column layout for Calculator + Edit panel */
+.calc-edit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+}
+
 @media (max-width: 900px) {
-    .grid-container {
+    .grid-container,
+    .calc-edit-grid {
         grid-template-columns: 1fr;
     }
 }

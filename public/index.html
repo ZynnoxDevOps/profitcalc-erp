@@ -104,7 +104,7 @@
             <main id="main-content" class="dashboard-content">
                 <!-- Calculator Sub-View -->
                 <div id="calc-view" class="sub-view active">
-                    <div class="grid-container">
+                    <div class="calc-edit-grid">
                         <section class="calc-section">
                             <div class="glass-card">
                                 <h2>Calculadora de Lucro</h2>
@@ -174,30 +174,79 @@
                                             <strong id="res-profit" class="profit-positive">R$ 0,00</strong>
                                         </div>
                                     </div>
-                                    <button type="submit" class="btn-primary">Salvar Cálculo</button>
+                                    <button type="submit" class="btn-primary">💾 Salvar Cálculo</button>
                                 </form>
                             </div>
                         </section>
 
-                        <section class="list-section">
-                            <div class="glass-card table-card">
-                                <div class="card-header">
-                                    <h2>Produtos Salvos</h2>
+                        <!-- Right: Edit Calc Panel -->
+                        <section class="calc-section">
+                            <div class="glass-card" style="border-color: rgba(139,92,246,0.35);">
+                                <h2 style="color:#a78bfa;">✏️ Editar Cálculo Existente</h2>
+                                <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.5rem;">Selecione produto e loja para carregar e recalcular os valores cadastrados.</p>
+
+                                <div class="input-group">
+                                    <label for="edit-calc-product">Produto</label>
+                                    <select id="edit-calc-product">
+                                        <option value="">-- Selecione um Produto --</option>
+                                    </select>
                                 </div>
-                                <div class="table-wrapper">
-                                    <table id="products-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Nome</th>
-                                                <th>Venda</th>
-                                                <th>Custo</th>
-                                                <th>Lucro</th>
-                                                <th>Ações</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="products-body">
-                                        </tbody>
-                                    </table>
+
+                                <div class="input-group">
+                                    <label for="edit-calc-store">Loja / Canal Cadastrado</label>
+                                    <select id="edit-calc-store" disabled style="opacity:0.6;">
+                                        <option value="">-- Selecione o Produto primeiro --</option>
+                                    </select>
+                                </div>
+
+                                <div id="edit-calc-fields" style="display:none; margin-top:1rem;">
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="edit-p-cost">Custo do Produto (R$)</label>
+                                            <input type="number" id="edit-p-cost" step="0.01" placeholder="0.00">
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="edit-p-price">Preço de Venda (R$)</label>
+                                            <input type="number" id="edit-p-price" step="0.01" placeholder="0.00">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="edit-p-tax-p">Imposto (%)</label>
+                                            <input type="number" id="edit-p-tax-p" step="0.1" value="0">
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="edit-p-tax-p-fixed">Taxa (%)</label>
+                                            <input type="number" id="edit-p-tax-p-fixed" step="0.1" value="0">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="input-group">
+                                            <label for="edit-p-tax-f">Taxa Fixa (R$)</label>
+                                            <input type="number" id="edit-p-tax-f" step="0.01" value="0">
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="edit-p-costs">Custos Adicionais (R$)</label>
+                                            <input type="number" id="edit-p-costs" step="0.01" value="0">
+                                        </div>
+                                    </div>
+                                    <div class="result-preview" id="edit-result-preview" style="border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.07);">
+                                        <div class="res-item">
+                                            <span>Custo Total:</span>
+                                            <strong id="edit-res-cost">R$ 0,00</strong>
+                                        </div>
+                                        <div class="res-item">
+                                            <span>Lucro Líquido:</span>
+                                            <strong id="edit-res-profit" class="profit-positive">R$ 0,00</strong>
+                                        </div>
+                                    </div>
+                                    <button id="edit-calc-save-btn" class="btn-primary" style="background: linear-gradient(135deg, #7c3aed, #a78bfa);">
+                                        🔄 Atualizar Cálculo
+                                    </button>
+                                </div>
+                                <div id="edit-calc-empty" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">🔍</div>
+                                    <p>Selecione um produto e loja para editar.</p>
                                 </div>
                             </div>
                         </section>
