@@ -2094,30 +2094,47 @@ window.loadWholesaleProducts = async () => {
         input.value = '';
         input.focus();
 
-        // Scanner envia dados rápido e termina com Enter OU para de digitar
-        input.oninput = () => {
-            clearTimeout(wposScanTimer);
-            const val = input.value.trim();
-            if (!val) return;
-            // Auto-dispara após 300ms sem nova digitação (comportamento típico de scanner)
-            wposScanTimer = setTimeout(() => {
-                processWposInput(val);
-                input.value = '';
-                input.focus();
-            }, 300);
-        };
+        // Remove listeners anteriores para evitar duplicatas
+        const newInput = input.cloneNode(true);
+        input.parentNode.replaceChild(newInput, input);
 
-        input.onkeydown = (e) => {
+        // Scanners físicos digitam o código e enviam Enter automaticamente
+        // Fallback: timer de 600ms caso o scanner não envie Enter
+        let scanTimer = null;
+
+        newInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                clearTimeout(wposScanTimer);
-                const val = input.value.trim();
+                e.preventDefault();
+                clearTimeout(scanTimer);
+                const val = newInput.value.trim();
                 if (val) {
                     processWposInput(val);
-                    input.value = '';
-                    input.focus();
+                    newInput.value = '';
                 }
+                newInput.focus();
             }
-        };
+        });
+
+        newInput.addEventListener('input', () => {
+            clearTimeout(scanTimer);
+            const val = newInput.value.trim();
+            if (!val) return;
+            // Fallback: dispara após 600ms sem Enter (ex: scanner sem Enter automático)
+            scanTimer = setTimeout(() => {
+                if (newInput.value.trim()) {
+                    processWposInput(newInput.value.trim());
+                    newInput.value = '';
+                    newInput.focus();
+                }
+            }, 600);
+        });
+
+        // Sempre manter o foco no campo (clicou em qualquer lugar da tela, volta o foco)
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('button') && !e.target.closest('select') && !e.target.closest('input:not(#wpos-barcode-input)')) {
+                newInput.focus();
+            }
+        });
     }
 
     renderWposCart();
