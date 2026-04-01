@@ -1743,14 +1743,17 @@ window.openProductLabels = (productId) => {
     const widthMm = labelWidthMm.value || 60;
     const heightMm = labelHeightMm.value || 40;
 
-    labelsDetailGrid.innerHTML = product.variations.map((v, idx) => `
+    labelsDetailGrid.innerHTML = product.variations.map((v, idx) => {
+        const barcodeValue = v.ean8 || v.sku; // fallback to sku if ean8 not yet generated
+        return `
         <div class="glass-card" style="padding: 1rem; border-color: rgba(255,255,255,0.05);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:700; font-size: 0.9rem;">
                     <input type="checkbox" class="label-select-checkbox" data-idx="${idx}"
-                           data-sku="${v.sku}" data-name="${product.name}" data-color="${v.color}" data-size="${v.size}" data-price="${product.sale_price}"
+                           data-ean8="${barcodeValue}" data-name="${product.name}" data-color="${v.color}" data-size="${v.size}" data-price="${product.sale_price}"
                            style="width:18px; height:18px; cursor:pointer; accent-color:#f59e0b;">
                     ${v.color} | ${v.size}
+                    <span style="font-size:0.7rem; color:var(--text-muted); font-family:monospace; letter-spacing:0.05em;">${barcodeValue}</span>
                 </label>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <label style="font-size:0.75rem; color:var(--text-muted);">Qtd (mín. 2):</label>
@@ -1766,24 +1769,25 @@ window.openProductLabels = (productId) => {
                     <div style="font-weight:bold; font-size: ${Math.max(6, heightMm/5)}pt; text-transform:uppercase;">ProfitCalc</div>
                     <div style="font-size: ${Math.max(5, heightMm/6)}pt;">${v.color} | ${v.size}</div>
                     <div style="flex-grow:1; display:flex; align-items:center; justify-content:center; width:100%; overflow:hidden;">
-                        <svg class="preview-barcode" data-sku="${v.sku}" id="barcode-prev-${idx}"></svg>
+                        <svg class="preview-barcode" data-ean8="${barcodeValue}" id="barcode-prev-${idx}"></svg>
                     </div>
                     <div style="font-weight:bold; font-size: ${Math.max(7, heightMm/4.5)}pt; text-transform:uppercase;">${product.name}</div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 
-    // Generate Barcodes
+    // Generate EAN-8 Barcodes for preview
     product.variations.forEach((v, idx) => {
+        const barcodeValue = v.ean8 || v.sku;
         try {
-            JsBarcode(`#barcode-prev-${idx}`, v.sku, {
-                format: "CODE128",
+            JsBarcode(`#barcode-prev-${idx}`, barcodeValue, {
+                format: v.ean8 ? "EAN8" : "CODE128",
                 width: 2,
-                height: 40,
+                height: 35,
                 displayValue: true,
-                fontSize: 12,
-                margin: 10,
+                fontSize: 10,
+                margin: 6,
                 background: "#ffffff",
                 lineColor: "#000000"
             });
@@ -1837,19 +1841,22 @@ window.updateLabelDisplayPreview = () => {
         card.children[3].style.fontSize = `${Math.max(7, h/4.5)}pt`;
     });
 
-    // Re-render barcodes to handle width/height changes
+    // Re-render EAN-8 barcodes on dimension change
     document.querySelectorAll('.preview-barcode').forEach(svg => {
-        const sku = svg.dataset.sku;
-        JsBarcode(svg, sku, {
-            format: "CODE128",
-            width: 2,
-            height: 40,
-            displayValue: true,
-            fontSize: 10,
-            margin: 10,
-            background: "#ffffff",
-            lineColor: "#000000"
-        });
+        const ean8 = svg.dataset.ean8;
+        if (!ean8) return;
+        try {
+            JsBarcode(svg, ean8, {
+                format: ean8.length === 8 && /^\d+$/.test(ean8) ? "EAN8" : "CODE128",
+                width: 2,
+                height: 35,
+                displayValue: true,
+                fontSize: 10,
+                margin: 6,
+                background: "#ffffff",
+                lineColor: "#000000"
+            });
+        } catch(e) {}
     });
 };
 
@@ -1883,7 +1890,7 @@ window.printSelectedLabels = () => {
         // Round up to next even number to always fill both columns
         if (qty % 2 !== 0) qty += 1;
 
-        const { sku, name, color, size, price } = cb.dataset;
+        const { ean8, name, color, size, price } = cb.dataset;
         for (let i = 0; i < qty; i++) {
             const label = document.createElement('div');
             label.className = `label-print-item`;
@@ -1893,20 +1900,21 @@ window.printSelectedLabels = () => {
             label.innerHTML = `
                 <div class="label-info-top" style="font-size: ${Math.max(6, heightMm/5)}pt; margin-top:2px; font-weight:bold; text-transform:uppercase;">ProfitCalc</div>
                 <div class="label-variation" style="font-size: ${Math.max(5, heightMm/6)}pt;">${color} | ${size}</div>
-                <div class="barcode-container" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden; padding: 0 5px;">
+                <div class="barcode-container" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden; padding: 0 4px;">
                     <svg id="barcode-print-${totalTags}"></svg>
                 </div>
                 <div class="label-name-bottom" style="font-size: ${Math.max(7, heightMm/4.5)}pt; margin-bottom:2px; font-weight:bold; text-transform:uppercase;">${name}</div>
             `;
             printStagingArea.appendChild(label);
             
-            JsBarcode(`#barcode-print-${totalTags}`, sku, {
-                format: "CODE128",
-                width: 1,
-                height: 22,
+            const isEan8 = ean8 && ean8.length === 8 && /^\d+$/.test(ean8);
+            JsBarcode(`#barcode-print-${totalTags}`, ean8, {
+                format: isEan8 ? "EAN8" : "CODE128",
+                width: 2,
+                height: 28,
                 displayValue: true,
-                fontSize: 7,
-                margin: 1,
+                fontSize: 9,
+                margin: 2,
                 background: "#ffffff",
                 lineColor: "#000000"
             });

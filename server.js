@@ -66,6 +66,21 @@ app.get('/health', async (req, res) => {
 
 
 // =====================
+// EAN-8 HELPER
+// =====================
+// Generates a valid EAN-8 barcode string (8 digits) from a numeric ID.
+// Uses the variation's database ID zero-padded to 7 digits, then appends the check digit.
+function computeEan8(id) {
+  const digits = String(id).padStart(7, '0').slice(-7); // ensure exactly 7 digits
+  let sum = 0;
+  for (let i = 0; i < 7; i++) {
+    sum += parseInt(digits[i]) * (i % 2 === 0 ? 3 : 1);
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return digits + check;
+}
+
+// =====================
 // INIT DATABASE
 // =====================
 async function initDB() {
@@ -125,6 +140,7 @@ async function initDB() {
       color TEXT,
       size TEXT,
       sku TEXT,
+      ean8 TEXT,
       stock INTEGER DEFAULT 0
     );
 
@@ -216,6 +232,21 @@ async function initDB() {
   `);
 
   console.log('✅ Tabelas criadas/verificadas com sucesso.');
+
+  // Migration: add ean8 column if it doesn't exist yet
+  try {
+    await pool.query(`ALTER TABLE variations ADD COLUMN IF NOT EXISTS ean8 TEXT`);
+    // Populate ean8 for existing variations that don't have one
+    const missing = await pool.query(`SELECT id FROM variations WHERE ean8 IS NULL OR ean8 = ''`);
+    for (const row of missing.rows) {
+      const code = computeEan8(row.id);
+      await pool.query(`UPDATE variations SET ean8 = $1 WHERE id = $2`, [code, row.id]);
+    }
+    if (missing.rows.length > 0) console.log(`✅ EAN-8 gerado para ${missing.rows.length} variação(ões) existente(s).`);
+  } catch (e) {
+    console.warn('Aviso na migração EAN-8:', e.message);
+  }
+
   await seed();
 }
 
@@ -371,10 +402,13 @@ app.post('/api/catalog', authenticateToken, async (req, res) => {
 
     if (Array.isArray(variations)) {
       for (const v of variations) {
-        await client.query(
-          'INSERT INTO variations (product_id, color, size, sku) VALUES ($1,$2,$3,$4)',
+        const result = await client.query(
+          'INSERT INTO variations (product_id, color, size, sku) VALUES ($1,$2,$3,$4) RETURNING id',
           [productId, v.color || '', v.size || '', v.sku || '']
         );
+        const newId = result.rows[0].id;
+        const ean8 = computeEan8(newId);
+        await client.query('UPDATE variations SET ean8 = $1 WHERE id = $2', [ean8, newId]);
       }
     }
 
@@ -428,10 +462,13 @@ app.put('/api/catalog/:id', authenticateToken, async (req, res) => {
         if (existing) {
           if (existing.sku !== nv.sku) await client.query('UPDATE variations SET sku=$1 WHERE id=$2', [nv.sku, existing.id]);
         } else {
-          await client.query(
-            'INSERT INTO variations (product_id, color, size, sku) VALUES ($1,$2,$3,$4)',
+          const result = await client.query(
+            'INSERT INTO variations (product_id, color, size, sku) VALUES ($1,$2,$3,$4) RETURNING id',
             [productId, nv.color || '', nv.size || '', nv.sku || '']
           );
+          const newId = result.rows[0].id;
+          const ean8 = computeEan8(newId);
+          await client.query('UPDATE variations SET ean8 = $1 WHERE id = $2', [ean8, newId]);
         }
       }
     }
@@ -762,7 +799,7 @@ app.post('/api/sales/scan', authenticateToken, async (req, res) => {
     const varRes = await client.query(
       `SELECT v.id, v.stock, v.color, v.size, p.id as product_id, p.name, p.base_cost
        FROM variations v JOIN catalog_products p ON v.product_id = p.id
-       WHERE LOWER(v.sku) = LOWER($1) AND p.company_id = $2`,
+       WHERE (LOWER(v.sku) = LOWER($1) OR v.ean8 = $1) AND p.company_id = $2`,
       [sku, company_id]
     );
     const variation = varRes.rows[0];
@@ -851,7 +888,7 @@ app.post('/api/production/scan', authenticateToken, async (req, res) => {
     const varRes = await client.query(
       `SELECT v.id, v.stock, v.color, v.size, p.name
        FROM variations v JOIN catalog_products p ON v.product_id = p.id
-       WHERE LOWER(v.sku) = LOWER($1) AND p.company_id = $2`,
+       WHERE (LOWER(v.sku) = LOWER($1) OR v.ean8 = $1) AND p.company_id = $2`,
       [sku, company_id]
     );
     const variation = varRes.rows[0];
