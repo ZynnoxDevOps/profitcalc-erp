@@ -1028,15 +1028,15 @@ tr:hover td {
     }
 
     /* === ETIQUETAS === */
+    /* Column count and label dimensions are set dynamically via JS (dynamic-label-print-style) */
     #print-staging-area {
         display: grid !important;
         visibility: visible !important;
         position: fixed !important;
         left: 0 !important;
         top: 0 !important;
-        grid-template-columns: 50mm 50mm !important;
+        grid-template-columns: 1fr 1fr !important;
         gap: 0 !important;
-        width: 100mm !important;
         padding: 0 !important;
         margin: 0 !important;
         background: white !important;
@@ -1045,8 +1045,9 @@ tr:hover td {
     #print-staging-area * { visibility: visible !important; }
     .label-print-item {
         display: flex !important;
-        width: 50mm !important;
-        height: 25mm !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
         border: 0.3mm solid #ccc !important;
         overflow: hidden !important;
         margin: 0 !important;
@@ -1059,10 +1060,14 @@ tr:hover td {
     .print-footer { border-top: 1px dashed #000; padding-top: 5px; text-align: right; }
     .no-print { display: none !important; }
 
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: auto; margin: 0; }
 }
 
-
+/* Label quantity input when disabled (variation not selected) */
+.label-qty:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
 
 @keyframes pulseSuccess {
     0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }

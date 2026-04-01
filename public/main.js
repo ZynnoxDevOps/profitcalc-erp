@@ -1746,11 +1746,17 @@ window.openProductLabels = (productId) => {
     labelsDetailGrid.innerHTML = product.variations.map((v, idx) => `
         <div class="glass-card" style="padding: 1rem; border-color: rgba(255,255,255,0.05);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-                <span style="font-weight:700; font-size: 0.9rem;">${v.color} | ${v.size}</span>
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:700; font-size: 0.9rem;">
+                    <input type="checkbox" class="label-select-checkbox" data-idx="${idx}"
+                           data-sku="${v.sku}" data-name="${product.name}" data-color="${v.color}" data-size="${v.size}" data-price="${product.sale_price}"
+                           style="width:18px; height:18px; cursor:pointer; accent-color:#f59e0b;">
+                    ${v.color} | ${v.size}
+                </label>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <label style="font-size:0.75rem;">Qtd:</label>
-                    <input type="number" class="label-qty" data-sku="${v.sku}" data-name="${product.name}" data-color="${v.color}" data-size="${v.size}" data-price="${product.sale_price}" 
-                           value="1" min="0" style="width:55px; padding:4px; background:rgba(0,0,0,0.3); color:white; border:1px solid rgba(255,255,255,0.1); border-radius:4px;">
+                    <label style="font-size:0.75rem; color:var(--text-muted);">Qtd (mín. 2):</label>
+                    <input type="number" class="label-qty" data-idx="${idx}"
+                           value="2" min="2" step="2"
+                           style="width:60px; padding:4px; background:rgba(0,0,0,0.3); color:white; border:1px solid rgba(255,255,255,0.1); border-radius:4px; text-align:center;">
                 </div>
             </div>
             
@@ -1773,21 +1779,48 @@ window.openProductLabels = (productId) => {
         try {
             JsBarcode(`#barcode-prev-${idx}`, v.sku, {
                 format: "CODE128",
-                width: 2, // Engrossar barras para 2px (muito melhor para celular)
+                width: 2,
                 height: 40,
                 displayValue: true,
                 fontSize: 12,
-                margin: 10, // Margem de segurança (Quiet Zone)
-                background: "#ffffff", // Fundo branco sólido para contraste
+                margin: 10,
+                background: "#ffffff",
                 lineColor: "#000000"
             });
         } catch(e) { console.error(e); }
+    });
+
+    // Sync checkbox with qty input: enable/disable qty based on checkbox
+    document.querySelectorAll('.label-select-checkbox').forEach(cb => {
+        const idx = cb.dataset.idx;
+        const qtyInput = document.querySelector(`.label-qty[data-idx="${idx}"]`);
+        // Start unchecked
+        cb.checked = false;
+        if (qtyInput) qtyInput.disabled = true;
+
+        cb.addEventListener('change', () => {
+            if (qtyInput) qtyInput.disabled = !cb.checked;
+        });
     });
 };
 
 window.closeProductLabels = () => {
     labelsListView.style.display = 'block';
     labelsDetailView.style.display = 'none';
+};
+
+window.toggleAllLabelCheckboxes = () => {
+    const checkboxes = document.querySelectorAll('.label-select-checkbox');
+    const btn = document.getElementById('btn-toggle-all-labels');
+    // Check if any is unchecked; if so, select all; otherwise deselect all
+    const anyUnchecked = Array.from(checkboxes).some(cb => !cb.checked);
+    checkboxes.forEach(cb => {
+        cb.checked = anyUnchecked;
+        const idx = cb.dataset.idx;
+        const qtyInput = document.querySelector(`.label-qty[data-idx="${idx}"]`);
+        if (qtyInput) qtyInput.disabled = !anyUnchecked;
+    });
+    if (btn) btn.textContent = anyUnchecked ? '☑️ Desmarcar Todas' : '☑️ Selecionar Todas';
 };
 
 window.updateLabelDisplayPreview = () => {
@@ -1821,65 +1854,102 @@ window.updateLabelDisplayPreview = () => {
 };
 
 window.printSelectedLabels = () => {
-    const inputs = document.querySelectorAll('.label-qty');
-    const widthMm = labelWidthMm.value || 60;
-    const heightMm = labelHeightMm.value || 40;
+    const widthMm = parseFloat(labelWidthMm.value);
+    const heightMm = parseFloat(labelHeightMm.value);
+
+    if (!widthMm || !heightMm) {
+        alert("⚠️ Defina a Largura e a Altura da etiqueta antes de imprimir!");
+        return;
+    }
     
     printStagingArea.innerHTML = '';
     
+    // Collect selected checkboxes
+    const selectedCheckboxes = Array.from(document.querySelectorAll('.label-select-checkbox:checked'));
+    
+    if (selectedCheckboxes.length === 0) {
+        alert("Selecione pelo menos uma variação para imprimir!");
+        return;
+    }
+
     let totalTags = 0;
 
-    inputs.forEach(input => {
-        const qty = parseInt(input.value);
-        if (qty > 0) {
-            const { sku, name, color, size, price } = input.dataset;
-            for (let i = 0; i < qty; i++) {
-                const label = document.createElement('div');
-                label.className = `label-print-item`;
-                label.style.width = `${widthMm}mm`;
-                label.style.height = `${heightMm}mm`;
-                
-                label.innerHTML = `
-                    <div class="label-info-top" style="font-size: ${Math.max(6, heightMm/5)}pt; margin-top:2px; font-weight:bold; text-transform:uppercase;">ProfitCalc</div>
-                    <div class="label-variation" style="font-size: ${Math.max(5, heightMm/6)}pt;">${color} | ${size}</div>
-                    <div class="barcode-container" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden; padding: 0 5px;">
-                        <svg id="barcode-print-${totalTags}"></svg>
-                    </div>
-                    <div class="label-name-bottom" style="font-size: ${Math.max(7, heightMm/4.5)}pt; margin-bottom:2px; font-weight:bold; text-transform:uppercase;">${name}</div>
-                `;
-                printStagingArea.appendChild(label);
-                
-                JsBarcode(`#barcode-print-${totalTags}`, sku, {
-                    format: "CODE128",
-                    width: 1,
-                    height: 22,
-                    displayValue: true,
-                    fontSize: 7,
-                    margin: 1,
-                    background: "#ffffff",
-                    lineColor: "#000000"
-                });
-                totalTags++;
-            }
+    selectedCheckboxes.forEach(cb => {
+        const idx = cb.dataset.idx;
+        const qtyInput = document.querySelector(`.label-qty[data-idx="${idx}"]`);
+        // Always print at minimum 2 (one row = 2 columns)
+        let qty = qtyInput ? parseInt(qtyInput.value) : 2;
+        if (isNaN(qty) || qty < 2) qty = 2;
+        // Round up to next even number to always fill both columns
+        if (qty % 2 !== 0) qty += 1;
+
+        const { sku, name, color, size, price } = cb.dataset;
+        for (let i = 0; i < qty; i++) {
+            const label = document.createElement('div');
+            label.className = `label-print-item`;
+            label.style.width = `${widthMm}mm`;
+            label.style.height = `${heightMm}mm`;
+            
+            label.innerHTML = `
+                <div class="label-info-top" style="font-size: ${Math.max(6, heightMm/5)}pt; margin-top:2px; font-weight:bold; text-transform:uppercase;">ProfitCalc</div>
+                <div class="label-variation" style="font-size: ${Math.max(5, heightMm/6)}pt;">${color} | ${size}</div>
+                <div class="barcode-container" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden; padding: 0 5px;">
+                    <svg id="barcode-print-${totalTags}"></svg>
+                </div>
+                <div class="label-name-bottom" style="font-size: ${Math.max(7, heightMm/4.5)}pt; margin-bottom:2px; font-weight:bold; text-transform:uppercase;">${name}</div>
+            `;
+            printStagingArea.appendChild(label);
+            
+            JsBarcode(`#barcode-print-${totalTags}`, sku, {
+                format: "CODE128",
+                width: 1,
+                height: 22,
+                displayValue: true,
+                fontSize: 7,
+                margin: 1,
+                background: "#ffffff",
+                lineColor: "#000000"
+            });
+            totalTags++;
         }
     });
 
     if (totalTags === 0) {
-        alert("Defina a quantidade de pelo menos uma etiqueta para imprimir!");
+        alert("Selecione pelo menos uma variação para imprimir!");
         return;
     }
+
+    // Update CSS for print: 2 columns with user-defined width
+    const styleId = 'dynamic-label-print-style';
+    let dynamicStyle = document.getElementById(styleId);
+    if (!dynamicStyle) {
+        dynamicStyle = document.createElement('style');
+        dynamicStyle.id = styleId;
+        document.head.appendChild(dynamicStyle);
+    }
+    dynamicStyle.textContent = `
+        @media print {
+            #print-staging-area {
+                grid-template-columns: ${widthMm}mm ${widthMm}mm !important;
+                width: ${widthMm * 2}mm !important;
+            }
+            .label-print-item {
+                width: ${widthMm}mm !important;
+                height: ${heightMm}mm !important;
+            }
+        }
+    `;
 
     // Show staging area for printing
     printStagingArea.style.display = 'grid';
 
-    // Delaying print just long enough for the browser to acknowledge the DOM change
     setTimeout(() => {
         window.print();
         
-        // Hide and clear after print dialog closes
         setTimeout(() => {
             printStagingArea.style.display = 'none';
             printStagingArea.innerHTML = '';
+            if (dynamicStyle) dynamicStyle.textContent = '';
         }, 1000);
     }, 100);
 };
