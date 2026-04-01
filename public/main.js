@@ -1756,10 +1756,10 @@ window.openProductLabels = (productId) => {
                     <span style="font-size:0.7rem; color:var(--text-muted); font-family:monospace; letter-spacing:0.05em;">${barcodeValue}</span>
                 </label>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <label style="font-size:0.75rem; color:var(--text-muted);">Qtd (mín. 2):</label>
+                    <label style="font-size:0.75rem; color:var(--text-muted);">Fileiras:</label>
                     <input type="number" class="label-qty" data-idx="${idx}"
-                           value="2" min="2" step="2"
-                           style="width:60px; padding:4px; background:rgba(0,0,0,0.3); color:white; border:1px solid rgba(255,255,255,0.1); border-radius:4px; text-align:center;">
+                           value="1" min="1" step="1"
+                           style="width:60px; padding:4px; background:rgba(0,0,0,0.3); color:white; border:1px solid rgba(255,255,255,0.1); border-radius:4px; text-align:center;" title="Número de fileiras (cada fileira = 2 etiquetas)">
                 </div>
             </div>
             
@@ -1884,11 +1884,10 @@ window.printSelectedLabels = () => {
     selectedCheckboxes.forEach(cb => {
         const idx = cb.dataset.idx;
         const qtyInput = document.querySelector(`.label-qty[data-idx="${idx}"]`);
-        // Always print at minimum 2 (one row = 2 columns)
-        let qty = qtyInput ? parseInt(qtyInput.value) : 2;
-        if (isNaN(qty) || qty < 2) qty = 2;
-        // Round up to next even number to always fill both columns
-        if (qty % 2 !== 0) qty += 1;
+        // qty = number of ROWS; each row has 2 columns → total labels = rows × 2
+        let rows = qtyInput ? parseInt(qtyInput.value) : 1;
+        if (isNaN(rows) || rows < 1) rows = 1;
+        const qty = rows * 2;
 
         const { ean8, name, color, size, price } = cb.dataset;
         for (let i = 0; i < qty; i++) {
