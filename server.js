@@ -300,10 +300,19 @@ const MARKETPLACE_PRESETS_SERVER = [
 
 const AUTO_PRICE_MARGIN_SERVER = 0.325;
 
-function getStorePresetServer(label) {
+function getStorePresetServer(label, companyName = '') {
   const lower = (label || '').toLowerCase();
   const found = MARKETPLACE_PRESETS_SERVER.find(p => lower.includes(p.match));
-  if (found) return { taxP: found.taxP, taxPFixed: found.taxPFixed, taxF: found.taxF, costs: found.costs };
+  const isAmeModas = companyName === 'Ame Modas';
+
+  if (found) {
+    return { 
+      taxP: found.taxP, 
+      taxPFixed: isAmeModas ? (found.taxPFixed + 3) : found.taxPFixed, 
+      taxF: found.taxF, 
+      costs: found.costs 
+    };
+  }
   return { taxP: 0, taxPFixed: 0, taxF: 0, costs: 0 };
 }
 
@@ -441,6 +450,9 @@ app.put('/api/catalog/:id', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    const companyRes = await client.query('SELECT name FROM companies WHERE id = $1', [req.user.company_id]);
+    const companyName = companyRes.rows[0]?.name || '';
+
     await client.query(
       'UPDATE catalog_products SET name=$1, description=$2, image_data=$3, base_cost=$4 WHERE id=$5',
       [name, description || '', image_data || null, Number(base_cost) || 0, productId]
@@ -496,7 +508,7 @@ app.put('/api/catalog/:id', authenticateToken, async (req, res) => {
         // Atacado is always manual — never auto-reprice it
         if (ep.label === 'Atacado' || ep.type === 'wholesale') continue;
 
-        const preset = getStorePresetServer(ep.label);
+        const preset = getStorePresetServer(ep.label, companyName);
         const newSalePrice = calcIdealPriceServer(newCost, preset);
         if (!newSalePrice) continue;
 

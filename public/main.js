@@ -450,9 +450,9 @@ const MARKETPLACE_PRESETS = [
 
 function applyMarketplacePreset(storeName) {
     if (!storeName) return;
-    const lower = storeName.toLowerCase();
-    const preset = MARKETPLACE_PRESETS.find(p => lower.includes(p.match));
-    if (!preset) return;
+    const preset = getStorePreset(storeName);
+    // If no preset found (all 0), don't apply anything
+    if (preset.taxP === 0 && preset.taxPFixed === 0 && preset.taxF === 0 && preset.costs === 0) return;
 
     const taxPEl      = document.getElementById('p-tax-p');
     const taxPFixedEl = document.getElementById('p-tax-p-fixed');
@@ -493,7 +493,17 @@ const AUTO_PRICE_MARGIN = 0.325;
 function getStorePreset(storeName) {
     const lower = (storeName || '').toLowerCase();
     const found = MARKETPLACE_PRESETS.find(p => lower.includes(p.match));
-    if (found) return { taxP: found.taxP, taxPFixed: found.taxPFixed, taxF: found.taxF, costs: found.costs };
+    const companyName = localStorage.getItem('companyName');
+    const isAmeModas = companyName === 'Ame Modas';
+
+    if (found) {
+        return { 
+            taxP: found.taxP, 
+            taxPFixed: isAmeModas ? (found.taxPFixed + 3) : found.taxPFixed, 
+            taxF: found.taxF, 
+            costs: found.costs 
+        };
+    }
     // Default: no taxes for unknown stores
     return { taxP: 0, taxPFixed: 0, taxF: 0, costs: 0 };
 }
