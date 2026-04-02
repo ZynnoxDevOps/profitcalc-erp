@@ -316,6 +316,11 @@ function getStorePresetServer(label, companyName = '') {
   return { taxP: 0, taxPFixed: 0, taxF: 0, costs: 0 };
 }
 
+function calculateEffectiveCost(baseCost, salePrice, preset) {
+  const taxAmount = (salePrice * (preset.taxP + preset.taxPFixed)) / 100;
+  return baseCost + taxAmount + preset.taxF + preset.costs;
+}
+
 function calcIdealPriceServer(baseCost, preset, margin = AUTO_PRICE_MARGIN_SERVER) {
   const taxPercent = (preset.taxP + preset.taxPFixed) / 100;
   const divisor = 1 - taxPercent - margin;
@@ -822,6 +827,9 @@ app.post('/api/sales/scan', authenticateToken, async (req, res) => {
     const marketplace = mktRes.rows[0];
     if (!marketplace) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Marketplace não encontrado.' }); }
 
+    const companyRes = await client.query('SELECT name FROM companies WHERE id = $1', [company_id]);
+    const companyName = companyRes.rows[0]?.name || '';
+
     let priceDataRes = await client.query(
       'SELECT value, cost, profit FROM product_prices WHERE product_id = $1 AND label = $2',
       [variation.product_id, marketplace.name]
@@ -832,9 +840,34 @@ app.post('/api/sales/scan', authenticateToken, async (req, res) => {
       priceData = fallbackRes.rows[0];
     }
 
-    const price  = priceData ? priceData.value  : 0;
-    const cost   = priceData ? priceData.cost   : variation.base_cost;
-    const profit = priceData ? priceData.profit : (price - cost);
+    let price  = priceData ? priceData.value  : 0;
+    let cost   = priceData ? priceData.cost   : variation.base_cost;
+    let profit = priceData ? priceData.profit : (price - cost);
+
+    // Check for active campaign
+    const campRes = await client.query(
+      `SELECT c.* FROM campaigns c
+       JOIN campaign_products cp ON c.id = cp.campaign_id
+       WHERE cp.product_id = $1 AND c.company_id = $2
+         AND (c.marketplace_id IS NULL OR c.marketplace_id = $3)
+         AND (c.start_date <= $4 AND c.end_date >= $4)
+       LIMIT 1`,
+      [variation.product_id, company_id, marketplace_id, today]
+    );
+    const activeCamp = campRes.rows[0];
+
+    if (activeCamp) {
+      if (activeCamp.discount_percent) {
+        price = price * (1 - activeCamp.discount_percent / 100);
+      } else if (activeCamp.discount_fixed) {
+        price = price - activeCamp.discount_fixed;
+      }
+      
+      // Dynamically calculate cost and profit based on campaign price
+      const preset = getStorePresetServer(marketplace.name, companyName);
+      cost = calculateEffectiveCost(variation.base_cost, price, preset);
+      profit = price - cost;
+    }
 
     await client.query('UPDATE variations SET stock = stock - 1 WHERE id = $1', [variation.id]);
     await client.query(
@@ -1026,19 +1059,27 @@ app.get('/api/analysis/profit', authenticateToken, async (req, res) => {
       const basePrice = bestPriceEntry?.value || 0;
       const realCost = (bestPriceEntry && bestPriceEntry.cost > 0) ? bestPriceEntry.cost : p.base_cost;
 
-      let totalRevenue = 0, totalUnits = 0;
+      const companyRes = await pool.query('SELECT name FROM companies WHERE id = $1', [company_id]);
+      const companyName = companyRes.rows[0]?.name || '';
+
       pSales.forEach(s => {
         let effectivePrice = basePrice;
+        let effectiveCost = realCost;
+
         const activeCampaign = pCampaigns.find(c => s.sale_date >= c.start_date && s.sale_date <= c.end_date);
         if (activeCampaign) {
           if (activeCampaign.discount_percent) effectivePrice *= (1 - activeCampaign.discount_percent / 100);
           else if (activeCampaign.discount_fixed) effectivePrice -= activeCampaign.discount_fixed;
+
+          // Dynamically recalculate cost based on campaign price
+          const preset = getStorePresetServer(bestPriceEntry?.label || '', companyName);
+          effectiveCost = calculateEffectiveCost(p.base_cost, effectivePrice, preset);
         }
         totalRevenue += effectivePrice * s.quantity;
+        totalCost += effectiveCost * s.quantity;
         totalUnits += s.quantity;
       });
 
-      const totalCost = realCost * totalUnits;
       const netProfit = totalRevenue - totalCost;
 
       const currentCampaign = pCampaigns.find(c => today >= c.start_date && today <= c.end_date);

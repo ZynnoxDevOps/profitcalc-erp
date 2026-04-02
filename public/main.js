@@ -448,6 +448,18 @@ const MARKETPLACE_PRESETS = [
     }
 ];
 
+function getActiveCampaign(productId, storeName) {
+    if (!productId || typeof campaigns === 'undefined') return null;
+    const today = new Date().toISOString().split('T')[0];
+    const prodCampaigns = campaigns.filter(c => c.products.some(p => String(p.product_id) === String(productId)));
+    
+    return prodCampaigns.find(c => {
+        const dateMatch = today >= c.start_date && today <= c.end_date;
+        const mktMatch = !c.marketplace_name || (storeName && c.marketplace_name.toLowerCase() === storeName.toLowerCase());
+        return dateMatch && mktMatch;
+    });
+}
+
 function applyMarketplacePreset(storeName) {
     if (!storeName) return;
     const preset = getStorePreset(storeName);
@@ -478,7 +490,55 @@ function applyMarketplacePreset(storeName) {
 // When store changes in main calc → apply preset if known marketplace
 if (pCalcLabel) {
     pCalcLabel.addEventListener('change', () => {
-        applyMarketplacePreset(pCalcLabel.value);
+        const storeName = pCalcLabel.value;
+        const productId = pCalcCatalogId?.value;
+        
+        applyMarketplacePreset(storeName);
+        
+        // Check for campaign
+        const activeCamp = getActiveCampaign(productId, storeName);
+        const priceEl = document.getElementById('p-price');
+        
+        if (activeCamp && priceEl) {
+            const prod = catalog.find(p => String(p.id) === String(productId));
+            const priceEntry = prod?.prices?.find(pr => pr.label === storeName) || prod?.prices?.[0];
+            let basePrice = priceEntry?.value || 0;
+            
+            let campaignPrice = basePrice;
+            if (activeCamp.discount_percent) {
+                campaignPrice = basePrice * (1 - activeCamp.discount_percent / 100);
+            } else if (activeCamp.discount_fixed) {
+                campaignPrice = basePrice - activeCamp.discount_fixed;
+            }
+            
+            if (campaignPrice > 0) {
+                priceEl.value = campaignPrice.toFixed(2);
+                priceEl.style.transition = 'all 0.3s';
+                priceEl.style.border = '2px solid #ef4444';
+                priceEl.title = `Preço de Campanha: ${activeCamp.name}`;
+                
+                // Show a small notice
+                const noticeId = 'campaign-notice';
+                let notice = document.getElementById(noticeId);
+                if (!notice) {
+                    notice = document.createElement('div');
+                    notice.id = noticeId;
+                    notice.style.fontSize = '0.75rem';
+                    notice.style.color = '#ef4444';
+                    notice.style.marginTop = '4px';
+                    notice.style.fontWeight = 'bold';
+                    priceEl.parentNode.appendChild(notice);
+                }
+                notice.textContent = `📢 Ativo: ${activeCamp.name} (${activeCamp.discount_percent ? activeCamp.discount_percent+'%' : 'R$ '+activeCamp.discount_fixed} off)`;
+                
+                updatePreview();
+            }
+        } else if (priceEl) {
+            priceEl.style.border = '';
+            priceEl.title = '';
+            const notice = document.getElementById('campaign-notice');
+            if (notice) notice.remove();
+        }
     });
 }
 
