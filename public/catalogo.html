@@ -719,23 +719,42 @@
 
     /* Mínimos progress */
     .cart-minimums {
-      margin: 0.5rem 0;
+      margin: 0.75rem 0 0.25rem;
       display: flex;
       flex-direction: column;
-      gap: 0.4rem;
+      gap: 0.75rem;
+      background: var(--bg-card2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem;
     }
+
+    .cart-minimums-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .min-bar-group { display: flex; flex-direction: column; gap: 0.2rem; }
 
     .min-bar-label {
       display: flex;
       justify-content: space-between;
       font-size: 0.78rem;
       color: var(--text-muted);
-      margin-bottom: 0.2rem;
     }
+
+    .min-bar-label .min-name { font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
+    .min-bar-label .min-count { font-weight: 700; flex-shrink: 0; }
+    .min-bar-label .min-count.ok { color: var(--success); }
+    .min-bar-label .min-count.warn { color: var(--warning); }
 
     .min-bar-track {
       height: 5px;
-      background: var(--bg-card2);
+      background: rgba(255,255,255,0.08);
       border-radius: 100px;
       overflow: hidden;
     }
@@ -748,6 +767,20 @@
     }
 
     .min-bar-fill.done { background: var(--success); }
+
+    .min-note {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .min-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0.25rem 0;
+    }
 
     .cart-footer {
       padding: 1rem 1.5rem 1.5rem;
@@ -1055,7 +1088,7 @@
           <input type="number" class="qty-input" id="modalQty" value="20" min="1" max="9999" oninput="clampQty()" />
           <button class="qty-btn" onclick="changeModalQty(5)">+</button>
         </div>
-        <div class="qty-hint">Mínimo <strong>20 peças</strong> por produto</div>
+        <div class="qty-hint">Mínimo <strong>20 peças</strong> por produto<br><span style="font-size:0.72rem;opacity:0.7">(soma de todas as cores e tamanhos)</span></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1086,15 +1119,19 @@
 
     <!-- Progress bars -->
     <div class="cart-minimums" id="cartMinimums" style="display:none">
-      <div>
+      <div class="cart-minimums-title">📊 Progresso dos Mínimos</div>
+      <div id="productProgressBars"></div>
+      <div class="min-divider"></div>
+      <div class="min-bar-group">
         <div class="min-bar-label">
-          <span>Total de peças</span>
-          <span id="totalPiecesLabel">0 / 50</span>
+          <span class="min-name">🛒 Total do pedido</span>
+          <span class="min-count" id="totalPiecesLabel">0 / 50</span>
         </div>
         <div class="min-bar-track">
           <div class="min-bar-fill" id="totalPiecesBar" style="width:0%"></div>
         </div>
       </div>
+      <div class="min-note">💡 Cores e tamanhos do mesmo produto somam juntos</div>
     </div>
   </div>
 
@@ -1417,10 +1454,35 @@
       </div>`;
     }).join('');
 
-    // Progress bars
+    // Progress bars — por produto (soma de cores e tamanhos) + total geral
+    const byProduct = {};
+    for (const item of cart) {
+      if (!byProduct[item.product_id]) byProduct[item.product_id] = { name: item.product_name, qty: 0 };
+      byProduct[item.product_id].qty += item.quantity;
+    }
+
+    const productProgressEl = document.getElementById('productProgressBars');
+    productProgressEl.innerHTML = Object.entries(byProduct).map(([pid, data]) => {
+      const pct = Math.min(100, (data.qty / MIN_PER_PRODUCT) * 100);
+      const done = data.qty >= MIN_PER_PRODUCT;
+      const countClass = done ? 'ok' : 'warn';
+      return `
+      <div class="min-bar-group">
+        <div class="min-bar-label">
+          <span class="min-name">👗 ${data.name}</span>
+          <span class="min-count ${countClass}">${data.qty} / ${MIN_PER_PRODUCT} ${done ? '✓' : ''}</span>
+        </div>
+        <div class="min-bar-track">
+          <div class="min-bar-fill ${done ? 'done' : ''}" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+    }).join('');
+
     const totalPct = Math.min(100, (totalPieces / MIN_TOTAL) * 100);
-    document.getElementById('totalPiecesLabel').textContent = `${totalPieces} / ${MIN_TOTAL}`;
+    const totalLabel = document.getElementById('totalPiecesLabel');
     const totalBar = document.getElementById('totalPiecesBar');
+    totalLabel.textContent = `${totalPieces} / ${MIN_TOTAL} ${totalPieces >= MIN_TOTAL ? '✓' : ''}`;
+    totalLabel.className = 'min-count ' + (totalPieces >= MIN_TOTAL ? 'ok' : 'warn');
     totalBar.style.width = totalPct + '%';
     totalBar.className = 'min-bar-fill' + (totalPieces >= MIN_TOTAL ? ' done' : '');
 
@@ -1428,6 +1490,7 @@
     const canCheckout = totalPieces >= MIN_TOTAL && canCheckoutMinPerProduct();
     document.getElementById('btnCheckout').disabled = !canCheckout;
   }
+
 
   function canCheckoutMinPerProduct() {
     const byProduct = {};
