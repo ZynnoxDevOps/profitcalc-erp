@@ -5,6 +5,7 @@ let catalog = [];
 let currentImageData = null;
 let editingCatalogId = null;
 let editingCampaignId = null;
+let campaignMode = 'product'; // 'product' ou 'variation'
 
 // DOM - Auth
 const loginView = document.getElementById('login-view');
@@ -1492,38 +1493,122 @@ function renderCampaignFormProducts(selectedIds = []) {
         campProductsList.innerHTML = '<div style="color:var(--text-muted); font-size:0.9rem; text-align: center; padding: 2rem;">Adicione produtos no Catálogo primeiro!</div>';
         return;
     }
-    
+
     const mSelect = document.getElementById('camp-marketplace-id');
     const mktId = mSelect ? mSelect.value : '';
 
-    campProductsList.innerHTML = catalog.map(p => {
-        let salePrice = Number(p.sale_price) || 0;
-        if (mktId && p.prices) {
-            let mktName = null;
-            if (typeof marketplaces !== 'undefined') {
-                const m = marketplaces.find(mm => mm.id == mktId);
-                if (m) mktName = m.name;
-            }
-            if (mktName) {
-                const mktPriceObj = p.prices.find(pr => pr.type === 'marketplace' && pr.label === mktName);
-                if (mktPriceObj && mktPriceObj.value !== null && mktPriceObj.value !== undefined && mktPriceObj.value !== '') {
-                    salePrice = Number(mktPriceObj.value);
+    if (campaignMode === 'variation') {
+        // Modo Variação: exibe produto expandido com suas variações ordenadas por cor/tamanho
+        campProductsList.innerHTML = catalog.map(p => {
+            const sortedVars = sortVariations(p.variations || []);
+            if (!sortedVars.length) return '';
+
+            // Agrupar variações por cor
+            const byColor = {};
+            sortedVars.forEach(v => {
+                if (!byColor[v.color]) byColor[v.color] = [];
+                byColor[v.color].push(v);
+            });
+
+            const colorBlocks = Object.entries(byColor).map(([color, vars]) => {
+                const varRows = vars.map(v => `
+                    <label style="display:flex; align-items:center; gap:10px; padding:7px 10px 7px 28px; border-radius:6px; cursor:pointer; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); transition:background 0.15s; user-select:none; margin-bottom:3px;">
+                        <input type="checkbox" name="camp-prod" value="${p.id}" class="custom-checkbox" style="width:15px; height:15px; accent-color:var(--primary); cursor:pointer;" ${selectedIds.includes(p.id.toString()) ? 'checked' : ''}>
+                        <span style="font-size:0.82rem; color:white; font-weight:600;">${v.size}</span>
+                        <span style="font-size:0.7rem; color:var(--text-muted); font-family:monospace; margin-left:4px;">${v.sku}</span>
+                        <span style="font-size:0.7rem; color:var(--text-muted); margin-left:auto;">EAN: ${v.ean8 || '—'}</span>
+                    </label>`).join('');
+
+                return `
+                <div style="margin-bottom:10px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:#f59e0b; font-weight:700; padding:3px 8px; margin-bottom:5px; display:flex; align-items:center; gap:6px; letter-spacing:0.05em;">
+                        <span style="width:8px; height:8px; border-radius:50%; background:#f59e0b; display:inline-block; flex-shrink:0;"></span>
+                        ${color}
+                    </div>
+                    ${varRows}
+                </div>`;
+            }).join('');
+
+            return `
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.07);">
+                    ${p.image_data ? `<img src="${p.image_data}" style="width:34px; height:34px; object-fit:cover; border-radius:6px;">` : `<div style="width:34px; height:34px; border-radius:6px; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-size:1rem;">📷</div>`}
+                    <strong style="color:white; font-size:0.92rem; flex-grow:1;">${p.name}</strong>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">${p.variations ? p.variations.length : 0} var.</span>
+                </div>
+                ${colorBlocks}
+            </div>`;
+        }).join('');
+    } else {
+        // Modo Produto (padrão): exibe produto como bloco único
+        campProductsList.innerHTML = catalog.map(p => {
+            let salePrice = Number(p.sale_price) || 0;
+            if (mktId && p.prices) {
+                let mktName = null;
+                if (typeof marketplaces !== 'undefined') {
+                    const m = marketplaces.find(mm => mm.id == mktId);
+                    if (m) mktName = m.name;
+                }
+                if (mktName) {
+                    const mktPriceObj = p.prices.find(pr => pr.type === 'marketplace' && pr.label === mktName);
+                    if (mktPriceObj && mktPriceObj.value !== null && mktPriceObj.value !== undefined && mktPriceObj.value !== '') {
+                        salePrice = Number(mktPriceObj.value);
+                    }
                 }
             }
-        }
-        
-        return `
-        <label style="display:flex; align-items:center; gap: 12px; padding: 12px; border-radius: 8px; cursor:pointer; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: background 0.2s ease, transform 0.1s ease; user-select: none;">
-            <input type="checkbox" name="camp-prod" value="${p.id}" class="custom-checkbox" style="width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer;" ${selectedIds.includes(p.id.toString()) ? 'checked' : ''}>
-            ${p.image_data ? `<img src="${p.image_data}" style="width:40px; height:40px; object-fit:cover; border-radius:6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">` : `<div style="width:40px; height:40px; border-radius:6px; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">📷</div>`}
-            <div style="display:flex; flex-direction:column; flex-grow: 1;">
-                <span style="font-weight: 600; color: white;">${p.name}</span>
-                <span style="font-size:0.75rem; color:var(--text-muted); margin-top: 2px;">Venda Mkt.: <strong style="color:var(--primary); font-weight:600;">R$ ${salePrice.toFixed(2)}</strong></span>
-            </div>
-        </label>
-        `;
-    }).join('');
+            return `
+            <label style="display:flex; align-items:center; gap: 12px; padding: 12px; border-radius: 8px; cursor:pointer; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: background 0.2s ease; user-select: none;">
+                <input type="checkbox" name="camp-prod" value="${p.id}" class="custom-checkbox" style="width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer;" ${selectedIds.includes(p.id.toString()) ? 'checked' : ''}>
+                ${p.image_data ? `<img src="${p.image_data}" style="width:40px; height:40px; object-fit:cover; border-radius:6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">` : `<div style="width:40px; height:40px; border-radius:6px; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">📷</div>`}
+                <div style="display:flex; flex-direction:column; flex-grow: 1;">
+                    <span style="font-weight: 600; color: white;">${p.name}</span>
+                    <span style="font-size:0.75rem; color:var(--text-muted); margin-top: 2px;">Venda Mkt.: <strong style="color:var(--primary); font-weight:600;">R$ ${salePrice.toFixed(2)}</strong></span>
+                </div>
+            </label>`;
+        }).join('');
+    }
 }
+
+function injectCampaignModeButtons() {
+    campaignMode = 'product'; // reset ao abrir
+    const campProductsList = document.getElementById('camp-products-list');
+    if (!campProductsList) return;
+    const parent = campProductsList.parentNode;
+    let modeBar = document.getElementById('camp-mode-bar');
+    if (!modeBar) {
+        modeBar = document.createElement('div');
+        modeBar.id = 'camp-mode-bar';
+        modeBar.style.cssText = 'display:flex; gap:8px; margin-bottom:12px;';
+        parent.insertBefore(modeBar, campProductsList);
+    }
+    modeBar.innerHTML = `
+        <button type="button" id="btn-camp-mode-product" onclick="setCampaignMode('product')"
+            style="flex:1; padding:9px 8px; border-radius:8px; border:1px solid var(--primary); background:rgba(139,92,246,0.25); color:white; cursor:pointer; font-size:0.82rem; font-weight:700; transition:all 0.2s;">
+            📦 Por Produto
+        </button>
+        <button type="button" id="btn-camp-mode-variation" onclick="setCampaignMode('variation')"
+            style="flex:1; padding:9px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:transparent; color:var(--text-muted); cursor:pointer; font-size:0.82rem; font-weight:700; transition:all 0.2s;">
+            🎨 Por Variação
+        </button>`;
+}
+
+window.setCampaignMode = (mode) => {
+    campaignMode = mode;
+    const currentChecked = [...new Set(Array.from(document.querySelectorAll('input[name="camp-prod"]:checked')).map(cb => cb.value))];
+    const btnProduct   = document.getElementById('btn-camp-mode-product');
+    const btnVariation = document.getElementById('btn-camp-mode-variation');
+    if (btnProduct) {
+        btnProduct.style.background   = mode === 'product' ? 'rgba(139,92,246,0.25)' : 'transparent';
+        btnProduct.style.color        = mode === 'product' ? 'white' : 'var(--text-muted)';
+        btnProduct.style.borderColor  = mode === 'product' ? 'var(--primary)' : 'rgba(255,255,255,0.15)';
+    }
+    if (btnVariation) {
+        btnVariation.style.background  = mode === 'variation' ? 'rgba(245,158,11,0.2)' : 'transparent';
+        btnVariation.style.color       = mode === 'variation' ? '#f59e0b' : 'var(--text-muted)';
+        btnVariation.style.borderColor = mode === 'variation' ? '#f59e0b' : 'rgba(255,255,255,0.15)';
+    }
+    renderCampaignFormProducts(currentChecked);
+};
 
 window.deleteCampaign = async (id) => {
     if(!confirm('Excluir esta campanha de forma permanente?')) return;
@@ -1550,6 +1635,7 @@ if (btnAddCampaign) {
         }
         
         // Render checkboxes based on Catalog
+        injectCampaignModeButtons();
         renderCampaignFormProducts([]);
         
         campaignModal.classList.add('active');
@@ -1583,6 +1669,7 @@ window.editCampaign = (id) => {
     document.getElementById('camp-discount-fixed').value = camp.discount_fixed || '';
 
     // Render checkboxes and check selected ones
+    injectCampaignModeButtons();
     renderCampaignFormProducts(selectedIds);
 
     campaignModal.classList.add('active');
@@ -1601,7 +1688,7 @@ if (campaignForm) {
             end_date: document.getElementById('camp-end').value,
             discount_percent: document.getElementById('camp-discount-percent').value,
             discount_fixed: document.getElementById('camp-discount-fixed').value,
-            selected_products: Array.from(document.querySelectorAll('input[name="camp-prod"]:checked')).map(cb => cb.value)
+            selected_products: [...new Set(Array.from(document.querySelectorAll('input[name="camp-prod"]:checked')).map(cb => cb.value))]
         };
 
         const method = editingCampaignId ? 'PUT' : 'POST';
@@ -1768,6 +1855,25 @@ function renderSales() {
 
 
 // =====================
+// VARIATION SORT UTILITIES
+// =====================
+const SIZE_ORDER = ['PP', 'P', 'PQ', 'M', 'MD', 'G', 'GR', 'GG', 'XG', 'XGG', 'XXG', 'EG', 'EGG', 'XXXXG'];
+
+function sizeWeight(size) {
+    const idx = SIZE_ORDER.indexOf((size || '').toUpperCase().trim());
+    if (idx !== -1) return idx;
+    return 999; // tamanhos desconhecidos vão ao final
+}
+
+function sortVariations(variations) {
+    return [...variations].sort((a, b) => {
+        const colorCmp = (a.color || '').localeCompare(b.color || '', 'pt-BR');
+        if (colorCmp !== 0) return colorCmp;
+        return sizeWeight(a.size) - sizeWeight(b.size);
+    });
+}
+
+// =====================
 // LABELS & BARCODES
 // =====================
 async function loadLabels() {
@@ -1813,7 +1919,8 @@ window.openProductLabels = (productId) => {
     const widthMm = labelWidthMm.value || 60;
     const heightMm = labelHeightMm.value || 40;
 
-    labelsDetailGrid.innerHTML = product.variations.map((v, idx) => {
+    const sortedVariations = sortVariations(product.variations);
+    labelsDetailGrid.innerHTML = sortedVariations.map((v, idx) => {
         const barcodeValue = v.ean8 || v.sku; // fallback to sku if ean8 not yet generated
         return `
         <div class="glass-card" style="padding: 1rem; border-color: rgba(255,255,255,0.05);">
@@ -1847,8 +1954,8 @@ window.openProductLabels = (productId) => {
         </div>`;
     }).join('');
 
-    // Generate EAN-8 Barcodes for preview
-    product.variations.forEach((v, idx) => {
+    // Generate EAN-8 Barcodes for preview (using sortedVariations for consistent idx)
+    sortedVariations.forEach((v, idx) => {
         const barcodeValue = v.ean8 || v.sku;
         try {
             JsBarcode(`#barcode-prev-${idx}`, barcodeValue, {
