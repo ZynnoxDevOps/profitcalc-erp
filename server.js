@@ -1030,9 +1030,14 @@ app.get('/api/analysis/profit', authenticateToken, async (req, res) => {
     const products = productsRes.rows;
     if (!products.length) return res.json({ products: [], summary: {} });
 
+    const companyRes = await pool.query('SELECT name FROM companies WHERE id = $1', [company_id]);
+    const companyName = companyRes.rows[0]?.name || '';
+
     const salesRes = await pool.query(
-      `SELECT s.sale_date, s.quantity, v.product_id
-       FROM sales s JOIN variations v ON s.variation_id = v.id
+      `SELECT s.sale_date, s.quantity, v.product_id, s.marketplace_id, m.name as marketplace_name, s.unit_price, s.unit_cost, s.unit_profit
+       FROM sales s 
+       JOIN variations v ON s.variation_id = v.id
+       LEFT JOIN marketplaces m ON s.marketplace_id = m.id
        WHERE s.company_id = $1`,
       [company_id]
     );
@@ -1059,14 +1064,17 @@ app.get('/api/analysis/profit', authenticateToken, async (req, res) => {
       const basePrice = bestPriceEntry?.value || 0;
       const realCost = (bestPriceEntry && bestPriceEntry.cost > 0) ? bestPriceEntry.cost : p.base_cost;
 
-      const companyRes = await pool.query('SELECT name FROM companies WHERE id = $1', [company_id]);
-      const companyName = companyRes.rows[0]?.name || '';
+      let totalRevenue = 0, totalCost = 0, totalUnits = 0;
 
       pSales.forEach(s => {
         let effectivePrice = basePrice;
         let effectiveCost = realCost;
 
-        const activeCampaign = pCampaigns.find(c => s.sale_date >= c.start_date && s.sale_date <= c.end_date);
+        const activeCampaign = pCampaigns.find(c => {
+          const dateMatch = s.sale_date >= c.start_date && s.sale_date <= c.end_date;
+          const marketplaceMatch = (c.marketplace_id === null || c.marketplace_id === s.marketplace_id);
+          return dateMatch && marketplaceMatch;
+        });
         if (activeCampaign) {
           if (activeCampaign.discount_percent) effectivePrice *= (1 - activeCampaign.discount_percent / 100);
           else if (activeCampaign.discount_fixed) effectivePrice -= activeCampaign.discount_fixed;
@@ -1133,7 +1141,8 @@ app.get('/api/analysis/profit', authenticateToken, async (req, res) => {
         totalUnits: globalUnits,
         topPerformer: finalProducts[0]?.name || 'Nenhum',
         avgSold: avgSold.toFixed(1)
-      }
+      },
+      sales_raw: sales
     });
   } catch (err) {
     console.error('Erro na análise:', err);
