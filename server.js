@@ -1310,6 +1310,168 @@ app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
 });
 
 // =====================
+// CATALOGO PÚBLICO — SHINE MODAS (sem autenticação)
+// =====================
+
+// GET /catalogo/api/products — Lista produtos da Shine Modas com preço atacado
+app.get('/catalogo/api/products', async (req, res) => {
+  try {
+    const companyRes = await pool.query(`SELECT id FROM companies WHERE name = 'Shine Modas' LIMIT 1`);
+    const company = companyRes.rows[0];
+    if (!company) return res.status(404).json({ message: 'Empresa não encontrada.' });
+    const shineId = company.id;
+
+    // Busca produtos com preço atacado cadastrado
+    const productsRes = await pool.query(
+      `SELECT cp.id, cp.name, cp.description, cp.image_data, cp.base_cost,
+              pp.value as wholesale_price, pp.id as price_id
+       FROM catalog_products cp
+       JOIN product_prices pp ON pp.product_id = cp.id AND pp.label = 'Atacado'
+       WHERE cp.company_id = $1
+       ORDER BY cp.created_at DESC`,
+      [shineId]
+    );
+    const products = productsRes.rows;
+
+    const enhanced = await Promise.all(products.map(async p => {
+      const variationsRes = await pool.query(
+        `SELECT id, color, size, stock FROM variations WHERE product_id = $1 ORDER BY color, size`,
+        [p.id]
+      );
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        image_data: p.image_data,
+        wholesale_price: p.wholesale_price,
+        variations: variationsRes.rows
+      };
+    }));
+
+    res.json(enhanced);
+  } catch (err) {
+    console.error('Catalogo API error:', err);
+    res.status(500).json({ message: 'Erro ao carregar catálogo.' });
+  }
+});
+
+// POST /catalogo/api/orders — Recebe pedido de cliente da landing page
+app.post('/catalogo/api/orders', async (req, res) => {
+  const { customer_name, customer_whatsapp, customer_address, items } = req.body;
+
+  if (!customer_name || !customer_whatsapp || !customer_address) {
+    return res.status(400).json({ message: 'Nome, WhatsApp e endereço são obrigatórios.' });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: 'Carrinho vazio.' });
+  }
+
+  // Validar mínimos
+  // Agrupa por product_id para verificar mínimo por produto
+  const byProduct = {};
+  for (const item of items) {
+    if (!byProduct[item.product_id]) byProduct[item.product_id] = 0;
+    byProduct[item.product_id] += item.quantity;
+  }
+  for (const [pid, qty] of Object.entries(byProduct)) {
+    if (qty < 20) {
+      return res.status(400).json({ message: `Mínimo de 20 peças por produto. O produto ID ${pid} tem apenas ${qty} peça(s).` });
+    }
+  }
+  const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
+  if (totalQty < 50) {
+    return res.status(400).json({ message: `Mínimo de 50 peças no total. Seu carrinho tem ${totalQty} peça(s).` });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Busca company Shine Modas
+    const companyRes = await client.query(`SELECT id FROM companies WHERE name = 'Shine Modas' LIMIT 1`);
+    const company = companyRes.rows[0];
+    if (!company) { await client.query('ROLLBACK'); return res.status(500).json({ message: 'Empresa não configurada.' }); }
+    const shineId = company.id;
+
+    // Cria ou busca cliente
+    let customerId;
+    const existingCustomer = await client.query(
+      `SELECT id FROM customers WHERE company_id = $1 AND phone = $2 LIMIT 1`,
+      [shineId, customer_whatsapp]
+    );
+    if (existingCustomer.rows[0]) {
+      customerId = existingCustomer.rows[0].id;
+      // Atualiza endereço e nome se necessário
+      await client.query(
+        `UPDATE customers SET name = $1, address = $2 WHERE id = $3`,
+        [customer_name, customer_address, customerId]
+      );
+    } else {
+      const newCustomer = await client.query(
+        `INSERT INTO customers (company_id, name, phone, address) VALUES ($1,$2,$3,$4) RETURNING id`,
+        [shineId, customer_name, customer_whatsapp, customer_address]
+      );
+      customerId = newCustomer.rows[0].id;
+    }
+
+    // Calcula total e valida variações
+    let totalAmount = 0;
+    const validatedItems = [];
+    for (const item of items) {
+      const varRes = await client.query(
+        `SELECT v.id, v.stock, pp.value as wholesale_price
+         FROM variations v
+         JOIN catalog_products p ON v.product_id = p.id
+         LEFT JOIN product_prices pp ON pp.product_id = p.id AND pp.label = 'Atacado'
+         WHERE v.id = $1 AND p.company_id = $2`,
+        [item.variation_id, shineId]
+      );
+      const variation = varRes.rows[0];
+      if (!variation) { await client.query('ROLLBACK'); return res.status(400).json({ message: `Variação ID ${item.variation_id} não encontrada.` }); }
+
+      const unitPrice = variation.wholesale_price || 0;
+      totalAmount += unitPrice * item.quantity;
+      validatedItems.push({ variation_id: item.variation_id, quantity: item.quantity, unit_price: unitPrice });
+    }
+
+    // Cria pedido atacado
+    const orderRes = await client.query(
+      `INSERT INTO wholesale_orders (company_id, customer_id, total_amount, status)
+       VALUES ($1,$2,$3,'Pendente') RETURNING id`,
+      [shineId, customerId, totalAmount]
+    );
+    const orderId = orderRes.rows[0].id;
+
+    for (const item of validatedItems) {
+      await client.query(
+        `INSERT INTO wholesale_order_items (order_id, variation_id, quantity, unit_price) VALUES ($1,$2,$3,$4)`,
+        [orderId, item.variation_id, item.quantity, item.unit_price]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      message: 'Pedido realizado com sucesso!',
+      order_id: orderId,
+      total_amount: totalAmount,
+      customer_name,
+      customer_whatsapp
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Catalogo order error:', err);
+    res.status(500).json({ message: 'Erro ao registrar pedido.', error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Rota para servir a landing page
+app.get('/catalogo', (req, res) => {
+  res.sendFile('catalogo.html', { root: './public' });
+});
+
+// =====================
 // START SERVER
 // =====================
 // IMPORTANTE: Servidor sobe PRIMEIRO para Railway detectar a porta

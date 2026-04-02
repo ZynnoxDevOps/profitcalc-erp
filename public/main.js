@@ -3238,55 +3238,88 @@ window.deleteWholesaleOrder = async (id) => {
 };
 
 window.printWholesaleCoupon = async (orderId) => {
-    // Fetch fresh order details or find in list
-    const res = await fetch(`${API_URL}/wholesale/orders`, {
-        headers: { 'Authorization': localStorage.getItem('token') }
-    });
-    const orders = await res.json();
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
+    try {
+        const res = await fetch(`${API_URL}/wholesale/orders`, {
+            headers: { 'Authorization': localStorage.getItem('token') }
+        });
+        const orders = await res.json();
+        const order = orders.find(o => o.id === orderId);
+        if (!order) { alert('Pedido não encontrado.'); return; }
 
-    const staging = document.getElementById('wholesale-print-staging');
-    staging.innerHTML = `
-        <div class="print-header">
-            <h3>PROFITCALC ERP</h3>
-            <p>RESUMO DE PEDIDO - ATACADO</p>
-            <p>${new Date(order.created_at).toLocaleString('pt-BR')}</p>
-        </div>
-        <div style="margin-bottom: 10px;">
-            <strong>CLIENTE:</strong> ${order.customer_name || 'Individual'}<br>
-            <strong>WHATSAPP:</strong> ${order.customer_phone || '-'}<br>
-            <strong>ID PEDIDO:</strong> #${order.id}
-        </div>
-        <table class="print-table">
-            <thead>
-                <tr>
-                    <th>Item</th>
-                    <th style="text-align:right;">Qtd</th>
-                    <th style="text-align:right;">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${order.items.map(item => `
+        const totalPieces = (order.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+        const companyName = localStorage.getItem('companyName') || 'SHINE MODAS';
+
+        // Buscar endereço do cliente se disponível
+        let customerAddress = '';
+        if (order.customer_id) {
+            const allCustomers = await fetch(`${API_URL}/customers`, {
+                headers: { 'Authorization': localStorage.getItem('token') }
+            }).then(r => r.json()).catch(() => []);
+            const cust = allCustomers.find(c => c.id === order.customer_id);
+            if (cust) customerAddress = cust.address || '';
+        }
+
+        let staging = document.getElementById('wholesale-print-staging');
+        if (!staging) {
+            staging = document.createElement('div');
+            staging.id = 'wholesale-print-staging';
+            document.body.appendChild(staging);
+        }
+
+        const rows = (order.items || []).map(item => `
+            <tr>
+                <td style="padding:3px 2px;border-bottom:1px dashed #ccc;font-size:9pt;">
+                    <strong>${item.product_name}</strong><br>
+                    <span style="font-size:8pt;color:#555;">${item.color || '-'} | ${item.size || '-'}</span>
+                </td>
+                <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;font-size:9pt;">${item.quantity}</td>
+                <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;font-size:9pt;">R$ ${Number(item.unit_price || 0).toFixed(2)}</td>
+                <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:right;font-size:9pt;font-weight:bold;">R$ ${(Number(item.unit_price || 0) * item.quantity).toFixed(2)}</td>
+            </tr>`).join('');
+
+        staging.innerHTML = `
+        <div style="width:100%;max-width:340px;margin:0 auto;font-family:'Courier New',monospace;font-size:10px;color:#000;">
+            <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px;">
+                <strong style="font-size:16px;display:block;">${companyName.toUpperCase()}</strong>
+                <span style="font-size:9px;">CUPOM NÃO FISCAL — PEDIDO ATACADO</span><br>
+                <span style="font-size:9px;">Nº ${String(orderId).padStart(6,'0')} — ${new Date(order.created_at).toLocaleString('pt-BR')}</span>
+            </div>
+            <div style="margin-bottom:8px;border-bottom:1px dashed #000;padding-bottom:6px;font-size:9pt;">
+                <strong>Cliente:</strong> ${order.customer_name || 'Consumidor Final'}<br>
+                <strong>WhatsApp:</strong> ${order.customer_phone || '-'}<br>
+                ${customerAddress ? `<strong>Endereço:</strong> ${customerAddress}<br>` : ''}
+                <strong>Status:</strong> ${order.status || 'Pendente'}<br>
+                <strong>Total de Peças:</strong> ${totalPieces} peças
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                <thead>
                     <tr>
-                        <td style="font-size: 8pt;">${item.product_name}<br>(${item.color} | ${item.size})</td>
-                        <td style="text-align:right; vertical-align:top;">${item.quantity}</td>
-                        <td style="text-align:right; vertical-align:top;">R$ ${(item.unit_price * item.quantity).toFixed(2)}</td>
+                        <th style="font-size:8pt;border-bottom:1px solid #000;padding-bottom:2px;text-align:left;">Produto</th>
+                        <th style="font-size:8pt;border-bottom:1px solid #000;padding-bottom:2px;text-align:center;">Qtd</th>
+                        <th style="font-size:8pt;border-bottom:1px solid #000;padding-bottom:2px;text-align:right;">Unit.</th>
+                        <th style="font-size:8pt;border-bottom:1px solid #000;padding-bottom:2px;text-align:right;">Total</th>
                     </tr>
-                `).join('')}
-            </tbody>
-        </table>
-        <div class="print-footer">
-            <h3 style="margin: 0;">TOTAL: R$ ${order.total_amount.toFixed(2)}</h3>
-        </div>
-        <div style="text-align:center; margin-top: 15px; font-size: 8pt; border-top: 1px dashed #000; padding-top: 5px;">
-            Obrigado pela preferência!
-        </div>
-    `;
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="display:flex;justify-content:space-between;border-top:2px solid #000;padding-top:5px;font-size:12pt;font-weight:bold;">
+                <span>TOTAL</span>
+                <span>R$ ${Number(order.total_amount || 0).toFixed(2)}</span>
+            </div>
+            <div style="text-align:center;margin-top:14px;font-size:8pt;border-top:1px dashed #000;padding-top:8px;">
+                Obrigado pela preferência!<br>Documento sem valor fiscal.
+            </div>
+        </div>`;
 
-    staging.style.display = 'block';
-    window.print();
-    setTimeout(() => { staging.style.display = 'none'; }, 500);
+        staging.style.display = 'block';
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => { staging.style.display = 'none'; }, 600);
+        }, 250);
+    } catch (err) {
+        console.error('printWholesaleCoupon error:', err);
+        alert('Erro ao imprimir cupom: ' + err.message);
+    }
 };
 
 // --- New Core Functions ---
