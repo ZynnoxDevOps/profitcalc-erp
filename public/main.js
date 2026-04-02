@@ -498,7 +498,7 @@ function getStorePreset(storeName) {
 
     if (found) {
         return { 
-            taxP: found.taxP, 
+            taxP: isAmeModas ? 5 : found.taxP, 
             taxPFixed: isAmeModas ? (found.taxPFixed + 3) : found.taxPFixed, 
             taxF: found.taxF, 
             costs: found.costs 
